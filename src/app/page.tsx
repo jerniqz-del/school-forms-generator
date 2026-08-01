@@ -1043,52 +1043,60 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
     setIsProcessing(true);
 
     try {
-        const generationPromises = currentFilesData
-            .filter(fileData => fileData.selectedRows.size > 0)
-            .map(async fileData => {
-                const templateUrl = currentTemplateUrls[fileData.fileInfo.gradeLevel];
-                if (!templateUrl) {
-                    throw new Error(`No template selected for ${fileData.fileInfo.gradeLevel}.`);
-                }
+        const filesToGenerate = currentFilesData.filter(fileData => fileData.selectedRows.size > 0);
+        const generatedFiles: { name: string; blob: Blob }[] = [];
 
-                const { blob: output, selectedCount } = await buildSf9DocxBlob({
-                    templateUrl,
-                    fileData,
-                    sharedInfo: currentSharedInfo,
-                    croppedLogo: currentCroppedLogo,
-                    useMiddleInitial: useMI,
-                    isPromo,
-                });
-                const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedCount}_students).docx`;
+        for (const [index, fileData] of filesToGenerate.entries()) {
+            const templateUrl = currentTemplateUrls[fileData.fileInfo.gradeLevel];
+            if (!templateUrl) {
+                throw new Error(`No template selected for ${fileData.fileInfo.gradeLevel}.`);
+            }
 
-                if (currentDocumentType === 'pdf') {
-                    const formData = new FormData();
-                    formData.append('file', output, docxName);
+            setLoadingMessage(
+                currentDocumentType === 'pdf'
+                    ? `Preparing DOCX ${index + 1} of ${filesToGenerate.length} before PDF conversion...`
+                    : `Generating DOCX ${index + 1} of ${filesToGenerate.length}...`
+            );
 
-                    const conversionResponse = await fetch('/api/convert-docx-to-pdf', {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!conversionResponse.ok) {
-                        const errorData = await conversionResponse.json().catch(() => null);
-                        throw new Error(errorData?.error || `Failed to convert ${fileData.fileName} to PDF.`);
-                    }
-
-                    const pdfBlob = await conversionResponse.blob();
-                    return {
-                        name: docxName.replace(/\.docx$/i, '.pdf'),
-                        blob: pdfBlob,
-                    };
-                }
-                
-                return {
-                    name: docxName,
-                    blob: output
-                };
+            const { blob: output, selectedCount } = await buildSf9DocxBlob({
+                templateUrl,
+                fileData,
+                sharedInfo: currentSharedInfo,
+                croppedLogo: currentCroppedLogo,
+                useMiddleInitial: useMI,
+                isPromo,
             });
+            const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedCount}_students).docx`;
 
-        const generatedFiles = await Promise.all(generationPromises);
+            if (currentDocumentType === 'pdf') {
+                setLoadingMessage(`Converting PDF ${index + 1} of ${filesToGenerate.length}. This may take a moment...`);
+
+                const formData = new FormData();
+                formData.append('file', output, docxName);
+
+                const conversionResponse = await fetch('/api/convert-docx-to-pdf', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!conversionResponse.ok) {
+                    const errorData = await conversionResponse.json().catch(() => null);
+                    throw new Error(errorData?.error || `Failed to convert ${fileData.fileName} to PDF.`);
+                }
+
+                const pdfBlob = await conversionResponse.blob();
+                generatedFiles.push({
+                    name: docxName.replace(/\.docx$/i, '.pdf'),
+                    blob: pdfBlob,
+                });
+                continue;
+            }
+
+            generatedFiles.push({
+                name: docxName,
+                blob: output
+            });
+        }
 
         if (generatedFiles.length === 1) {
             saveAs(generatedFiles[0].blob, generatedFiles[0].name);

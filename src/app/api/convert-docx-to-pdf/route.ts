@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,13 +34,25 @@ export async function POST(request: NextRequest) {
         Authorization: `Bearer ${converterApiKey}`,
       },
       body: upstreamForm,
+      signal: AbortSignal.timeout(270_000),
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
       console.error('DOCX converter error:', errorText);
+      let converterMessage = 'DOCX to PDF conversion failed.';
+      try {
+        const parsed = JSON.parse(errorText);
+        if (typeof parsed?.detail === 'string') {
+          converterMessage = parsed.detail;
+        } else if (parsed?.detail?.message) {
+          converterMessage = parsed.detail.message;
+        }
+      } catch {
+        // Keep the generic message when the converter returns plain text or HTML.
+      }
       return NextResponse.json(
-        { error: 'DOCX to PDF conversion failed.' },
+        { error: converterMessage },
         { status: response.status }
       );
     }
