@@ -1,14 +1,18 @@
-export type PricedDocumentType = 'docx';
+export type PricedDocumentType = 'docx' | 'pdf';
 
 export const DOCUMENT_TYPE_PRICING: Record<PricedDocumentType, { label: string; ratePerStudent: number }> = {
   docx: {
     label: 'DOCX',
     ratePerStudent: 3.5,
   },
+  pdf: {
+    label: 'PDF',
+    ratePerStudent: 2,
+  },
 };
 
 export function isPricedDocumentType(value: unknown): value is PricedDocumentType {
-  return value === 'docx';
+  return value === 'docx' || value === 'pdf';
 }
 
 export function calculateGenerationPricing(studentCount: number, documentType: PricedDocumentType) {

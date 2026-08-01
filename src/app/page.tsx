@@ -523,7 +523,7 @@ export default function Home() {
   const [selectedTemplateUrls, setSelectedTemplateUrls] = useState<{ [gradeLevel: string]: string }>({});
 
   const [paperSize, setPaperSize] = useState('Custom');
-  const [documentType] = useState<PricedDocumentType>('docx');
+  const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
 
   const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
@@ -649,7 +649,7 @@ export default function Home() {
         
         return {
           ...parsedState,
-          documentType: 'docx',
+          documentType: parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -722,6 +722,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
         croppedLogo: currentCroppedLogo,
         selectedTemplateUrls: currentTemplateUrls,
         useMiddleInitial: useMI,
+        documentType: currentDocumentType,
     } = generationState;
 
     const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
@@ -792,9 +793,31 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
 
                 doc.render();
                 const output = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+                const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedStudents.length}_students).docx`;
+
+                if (currentDocumentType === 'pdf') {
+                    const formData = new FormData();
+                    formData.append('file', output, docxName);
+
+                    const conversionResponse = await fetch('/api/convert-docx-to-pdf', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!conversionResponse.ok) {
+                        const errorData = await conversionResponse.json().catch(() => null);
+                        throw new Error(errorData?.error || `Failed to convert ${fileData.fileName} to PDF.`);
+                    }
+
+                    const pdfBlob = await conversionResponse.blob();
+                    return {
+                        name: docxName.replace(/\.docx$/i, '.pdf'),
+                        blob: pdfBlob,
+                    };
+                }
                 
                 return {
-                    name: `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedStudents.length}_students).docx`,
+                    name: docxName,
                     blob: output
                 };
             });
@@ -810,7 +833,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
                 masterZip.file(file.name, arrayBuffer);
             }
             const zipBlob = masterZip.generate({ type: "blob" });
-            saveAs(zipBlob, "Generated_SF9_Documents.zip");
+            saveAs(zipBlob, currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip");
         }
 
         clearStateFromLocalStorage();
@@ -819,7 +842,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
         toast({
             variant: 'success',
             title: 'Generation Complete',
-            description: `${generatedFiles.length} document(s) have been generated.`,
+            description: `${generatedFiles.length} ${currentDocumentType.toUpperCase()} document(s) have been generated.`,
         });
 
     } catch (error: any) {
@@ -1925,13 +1948,38 @@ const formatPolishedName = (name: string): string => {
 
                         <div className="space-y-2">
                           <Label className="text-xs font-semibold">Document Type</Label>
-                          <div className="flex items-center justify-between rounded-lg border border-primary bg-primary/5 p-3 text-sm">
-                            <span className="flex items-center gap-2">
-                              <FileText className="size-4 text-primary" />
-                              <span className="font-medium">DOCX</span>
-                            </span>
-                            <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
-                          </div>
+                          <RadioGroup
+                            value={documentType}
+                            onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
+                            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                          >
+                            <Label
+                              htmlFor="document-type-docx"
+                              className={cn(
+                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
+                                documentType === 'docx' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <RadioGroupItem value="docx" id="document-type-docx" />
+                                <span className="font-medium">DOCX</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                            </Label>
+                            <Label
+                              htmlFor="document-type-pdf"
+                              className={cn(
+                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
+                                documentType === 'pdf' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <RadioGroupItem value="pdf" id="document-type-pdf" />
+                                <span className="font-medium">PDF</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
+                            </Label>
+                          </RadioGroup>
                         </div>
                         
                         <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
@@ -2622,6 +2670,44 @@ const formatPolishedName = (name: string): string => {
 
                         <div>
                             <h3 className="text-lg font-medium mb-3">Generation Options</h3>
+                            <div className="space-y-3 rounded-lg border bg-muted/20 p-4 mb-4">
+                                <div>
+                                    <h4 className="font-medium text-foreground">Document Type</h4>
+                                    <p className="text-sm text-muted-foreground">Choose the generated file format and price per selected student.</p>
+                                </div>
+                                <RadioGroup
+                                    value={documentType}
+                                    onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
+                                    className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                                >
+                                    <Label
+                                        htmlFor="step-document-type-docx"
+                                        className={cn(
+                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                            documentType === 'docx' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <RadioGroupItem value="docx" id="step-document-type-docx" />
+                                            <span className="font-semibold">DOCX</span>
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                                    </Label>
+                                    <Label
+                                        htmlFor="step-document-type-pdf"
+                                        className={cn(
+                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                            documentType === 'pdf' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <RadioGroupItem value="pdf" id="step-document-type-pdf" />
+                                            <span className="font-semibold">PDF</span>
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
+                                    </Label>
+                                </RadioGroup>
+                            </div>
                              {uniqueGradeLevels.length > 0 ? (
                                 <div className="space-y-4">
                                     {uniqueGradeLevels.map(gradeLevel => {
