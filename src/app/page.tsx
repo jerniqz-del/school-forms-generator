@@ -420,6 +420,7 @@ const TemplatePreviewCard = ({
 }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!templateUrl || !fileData || fileData.selectedRows.size === 0) {
@@ -515,16 +516,41 @@ const TemplatePreviewCard = ({
 
   if (previewStatus === 'ready' && previewUrl) {
     return (
-      <div className="w-[180px] h-[240px] border rounded-lg bg-background overflow-hidden shadow-sm relative">
-        <iframe
-          title={`Live preview for Grade ${gradeLevel}`}
-          src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-          className="h-full w-full bg-white"
-        />
-        <div className="absolute left-2 top-2 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-semibold text-primary shadow-sm">
-          Live Preview
-        </div>
-      </div>
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <button
+          type="button"
+          onClick={() => setIsPreviewOpen(true)}
+          className="w-[180px] h-[240px] border rounded-lg bg-background overflow-hidden shadow-sm relative text-left transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={`Open enlarged preview for Grade ${gradeLevel}`}
+        >
+          <iframe
+            title={`Live preview for Grade ${gradeLevel}`}
+            src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+            className="h-full w-full bg-white pointer-events-none"
+          />
+          <div className="absolute left-2 top-2 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-semibold text-primary shadow-sm">
+            Live Preview
+          </div>
+          <div className="absolute bottom-2 left-2 right-2 rounded bg-background/90 px-1.5 py-0.5 text-center text-[9px] font-medium text-foreground shadow-sm">
+            Click to enlarge
+          </div>
+        </button>
+        <DialogContent className="max-w-5xl h-[90vh] p-0 overflow-hidden">
+          <DialogHeader className="px-5 py-4 border-b">
+            <DialogTitle>Grade {gradeLevel} Preview</DialogTitle>
+            <DialogDescription>
+              Rendered from the selected DOCX template using the current data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="h-[calc(90vh-97px)] bg-muted">
+            <iframe
+              title={`Enlarged live preview for Grade ${gradeLevel}`}
+              src={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
+              className="h-full w-full bg-white"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     );
   }
 
@@ -560,11 +586,17 @@ const TemplatePreviewCard = ({
   }
 
   return (
-    <div className={cn(
-      "w-[180px] h-[240px] border rounded-lg bg-white text-[8px] text-gray-800 p-2.5 shadow-sm relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:shadow-md",
-      "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
-      "border-t-4", primaryColor
-    )}>
+    <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+      <button
+        type="button"
+        onClick={() => setIsPreviewOpen(true)}
+        className={cn(
+          "group w-[180px] h-[240px] border rounded-lg bg-white text-[8px] text-gray-800 p-2.5 shadow-sm relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:shadow-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
+          "border-t-4", primaryColor
+        )}
+        aria-label={`Open enlarged preview for Grade ${gradeLevel}`}
+      >
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
         <FileIcon className="size-24" />
       </div>
@@ -656,7 +688,51 @@ const TemplatePreviewCard = ({
         <span className="truncate max-w-[108px] font-medium leading-none">{selectedCount} selected{schoolYear ? ` - ${schoolYear}` : ''}</span>
         <span className="font-mono bg-gray-100 dark:bg-slate-800 px-0.5 py-0.2 rounded text-[4.5px] uppercase">.docx</span>
       </div>
-    </div>
+      <div className="absolute bottom-2 left-2 right-2 rounded bg-background/90 px-1.5 py-0.5 text-center text-[9px] font-medium text-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
+        Click to enlarge
+      </div>
+    </button>
+    <DialogContent className="max-w-3xl">
+      <DialogHeader>
+        <DialogTitle>Grade {gradeLevel} Preview</DialogTitle>
+        <DialogDescription>
+          {previewStatus === 'loading'
+            ? 'The real document preview is still rendering.'
+            : previewStatus === 'error'
+              ? 'The real document preview is unavailable, so this visual preview is shown.'
+              : 'Select at least one learner to render the real document preview.'}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex justify-center rounded-lg bg-muted/30 p-6">
+        <div className={cn(
+          "w-[360px] h-[480px] origin-center scale-100 border rounded-lg bg-white text-gray-800 p-5 shadow-sm relative flex flex-col justify-between overflow-hidden",
+          "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
+          "border-t-4", primaryColor
+        )}>
+          <div className="text-center text-sm font-semibold">{schoolName || "YOUR SCHOOL NAME"}</div>
+          <div className="text-center text-xs text-muted-foreground">Grade {gradeLevel}{section ? ` - ${section}` : ''}</div>
+          <div className="rounded border p-3 text-sm">
+            <div className="font-semibold uppercase">{sampleStudent?.Name || 'Selected learner'}</div>
+            <div className="text-xs text-muted-foreground">LRN: {sampleStudent?.LRN || '000000000000'}</div>
+          </div>
+          <div className="rounded border p-3 text-sm">
+            <div className="font-semibold">Template</div>
+            <div className="text-xs text-muted-foreground">{templateName}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="text-muted-foreground">Class Adviser</div>
+              <div className="font-semibold">{adviserName || 'Adviser Name'}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-muted-foreground">{schoolHeadDesignation || 'School Head'}</div>
+              <div className="font-semibold">{schoolHead || 'School Head Name'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+    </Dialog>
   );
 };
 
