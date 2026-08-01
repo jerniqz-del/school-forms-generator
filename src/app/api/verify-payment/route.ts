@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { calculateGenerationPricing, isPricedDocumentType } from '@/lib/pricing';
 
 const PAYMONGO_API_URL = 'https://api.paymongo.com/v1/checkout_sessions';
+const IS_PDF_OUTPUT_ENABLED = false;
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,13 @@ export async function POST(request: NextRequest) {
       !isPricedDocumentType(documentType)
     ) {
       return NextResponse.json({ verified: false, error: 'Invalid payment verification request.' }, { status: 400 });
+    }
+
+    if (!IS_PDF_OUTPUT_ENABLED && documentType === 'pdf') {
+      return NextResponse.json(
+        { verified: false, error: 'PDF generation is temporarily disabled.' },
+        { status: 400 }
+      );
     }
 
     const response = await fetch(`${PAYMONGO_API_URL}/${encodeURIComponent(checkoutSessionId)}`, {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DOCUMENT_TYPE_PRICING, calculateGenerationPricing, isPricedDocumentType } from '@/lib/pricing';
 
+const IS_PDF_OUTPUT_ENABLED = false;
+
 export async function POST(request: NextRequest) {
   try {
     const secretKey = process.env.PAYMONGO_SECRET_KEY;
@@ -19,6 +21,10 @@ export async function POST(request: NextRequest) {
 
     if (!isPricedDocumentType(documentType)) {
       return NextResponse.json({ error: 'Invalid document type.' }, { status: 400 });
+    }
+
+    if (!IS_PDF_OUTPUT_ENABLED && documentType === 'pdf') {
+      return NextResponse.json({ error: 'PDF generation is temporarily disabled.' }, { status: 400 });
     }
 
     const pricing = calculateGenerationPricing(studentCount, documentType);

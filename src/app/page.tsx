@@ -353,6 +353,8 @@ const MAX_PREVIOUS_LOGOS = 5;
 const MAX_PREVIOUS_INFO = 5;
 const DEV_PROMO_CODE = 'DEVPASS';
 const IS_DEVELOPER_PROMO_ENABLED = process.env.NODE_ENV !== 'production';
+const IS_PDF_OUTPUT_ENABLED = false;
+const IS_LIVE_PDF_PREVIEW_ENABLED = false;
 
 
 const HistoryBadges = ({
@@ -423,7 +425,7 @@ const TemplatePreviewCard = ({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
-    if (!templateUrl || !fileData || fileData.selectedRows.size === 0) {
+    if (!IS_LIVE_PDF_PREVIEW_ENABLED || !templateUrl || !fileData || fileData.selectedRows.size === 0) {
       setPreviewStatus('idle');
       setPreviewUrl(prev => {
         if (prev) URL.revokeObjectURL(prev);
@@ -509,7 +511,7 @@ const TemplatePreviewCard = ({
       <div className="w-[180px] h-[240px] border border-dashed rounded-lg flex flex-col items-center justify-center bg-muted/10 text-muted-foreground p-3 transition-colors hover:bg-muted/20">
         <FileIcon className="size-8 stroke-[1.2] mb-2 animate-pulse text-muted-foreground/50" />
         <span className="text-[11px] font-semibold text-center">No Template Selected</span>
-        <span className="text-[9px] text-center opacity-75 mt-1 leading-normal">Choose layout to see a live visual mockup</span>
+        <span className="text-[9px] text-center opacity-75 mt-1 leading-normal">Choose layout to see a visual mockup</span>
       </div>
     );
   }
@@ -696,11 +698,7 @@ const TemplatePreviewCard = ({
       <DialogHeader>
         <DialogTitle>Grade {gradeLevel} Preview</DialogTitle>
         <DialogDescription>
-          {previewStatus === 'loading'
-            ? 'The real document preview is still rendering.'
-            : previewStatus === 'error'
-              ? 'The real document preview is unavailable, so this visual preview is shown.'
-              : 'Select at least one learner to render the real document preview.'}
+          Visual mockup only. Live PDF preview is temporarily disabled.
         </DialogDescription>
       </DialogHeader>
       <div className="flex justify-center rounded-lg bg-muted/30 p-6">
@@ -952,7 +950,7 @@ export default function Home() {
         
         return {
           ...parsedState,
-          documentType: parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
+          documentType: IS_PDF_OUTPUT_ENABLED && parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -1148,7 +1146,8 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
           if (restoredState) {
               const checkoutSessionId = localStorage.getItem('checkoutSessionId');
               const totalSelected = restoredState.filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
-              const restoredDocumentType = restoredState.documentType || 'docx';
+              const restoredDocumentType = IS_PDF_OUTPUT_ENABLED && restoredState.documentType === 'pdf' ? 'pdf' : 'docx';
+              restoredState.documentType = restoredDocumentType;
 
               if (!checkoutSessionId) {
                   toast({
@@ -2220,42 +2219,6 @@ const formatPolishedName = (name: string): string => {
                           Review your order summary before proceeding to payment.
                         </AlertDialogDescription>
 
-                        <div className="space-y-2">
-                          <Label className="text-xs font-semibold">Document Type</Label>
-                          <RadioGroup
-                            value={documentType}
-                            onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
-                            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-                          >
-                            <Label
-                              htmlFor="document-type-docx"
-                              className={cn(
-                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
-                                documentType === 'docx' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                              )}
-                            >
-                              <span className="flex items-center gap-2">
-                                <RadioGroupItem value="docx" id="document-type-docx" />
-                                <span className="font-medium">DOCX</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
-                            </Label>
-                            <Label
-                              htmlFor="document-type-pdf"
-                              className={cn(
-                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
-                                documentType === 'pdf' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                              )}
-                            >
-                              <span className="flex items-center gap-2">
-                                <RadioGroupItem value="pdf" id="document-type-pdf" />
-                                <span className="font-medium">PDF</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
-                            </Label>
-                          </RadioGroup>
-                        </div>
-                        
                         <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Document Type:</span>
@@ -2947,40 +2910,12 @@ const formatPolishedName = (name: string): string => {
                             <div className="space-y-3 rounded-lg border bg-muted/20 p-4 mb-4">
                                 <div>
                                     <h4 className="font-medium text-foreground">Document Type</h4>
-                                    <p className="text-sm text-muted-foreground">Choose the generated file format and price per selected student.</p>
+                                    <p className="text-sm text-muted-foreground">DOCX generation is currently active.</p>
                                 </div>
-                                <RadioGroup
-                                    value={documentType}
-                                    onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
-                                    className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-                                >
-                                    <Label
-                                        htmlFor="step-document-type-docx"
-                                        className={cn(
-                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
-                                            documentType === 'docx' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
-                                        )}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <RadioGroupItem value="docx" id="step-document-type-docx" />
-                                            <span className="font-semibold">DOCX</span>
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
-                                    </Label>
-                                    <Label
-                                        htmlFor="step-document-type-pdf"
-                                        className={cn(
-                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
-                                            documentType === 'pdf' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
-                                        )}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <RadioGroupItem value="pdf" id="step-document-type-pdf" />
-                                            <span className="font-semibold">PDF</span>
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
-                                    </Label>
-                                </RadioGroup>
+                                <div className="flex items-center justify-between rounded-lg border bg-background p-4 text-sm">
+                                    <span className="font-semibold">DOCX</span>
+                                    <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                                </div>
                             </div>
                              {uniqueGradeLevels.length > 0 ? (
                                 <div className="space-y-4">
