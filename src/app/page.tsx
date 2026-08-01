@@ -11,6 +11,7 @@ import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
+import { jsPDF } from 'jspdf';
 
 import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, Tag } from 'lucide-react';
 
@@ -690,6 +691,159 @@ const formatNameWithMiddleInitial = (name: string): string => {
     return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''}`;
 };
 
+const sanitizeFileName = (value: string) => value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, '_');
+
+const generateSF9Pdf = ({
+    fileData,
+    sharedInfo,
+    croppedLogo,
+    useMiddleInitial,
+}: {
+    fileData: FileData;
+    sharedInfo: SharedInfo;
+    croppedLogo: string | null;
+    useMiddleInitial: boolean;
+}) => {
+    const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 42;
+    const contentWidth = pageWidth - margin * 2;
+
+    const drawHeader = () => {
+        if (croppedLogo) {
+            try {
+                pdf.addImage(croppedLogo, 'PNG', margin, 34, 42, 42);
+            } catch (error) {
+                console.warn('Could not add logo to PDF:', error);
+            }
+        }
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.text('REPUBLIC OF THE PHILIPPINES', pageWidth / 2, 38, { align: 'center' });
+        pdf.text('DEPARTMENT OF EDUCATION', pageWidth / 2, 50, { align: 'center' });
+        pdf.setFontSize(9);
+        pdf.text(sharedInfo.region || fileData.fileInfo.region || '', pageWidth / 2, 64, { align: 'center' });
+        pdf.text(sharedInfo.division || fileData.fileInfo.division || '', pageWidth / 2, 78, { align: 'center' });
+        pdf.setFontSize(10);
+        pdf.text(sharedInfo.school || fileData.fileInfo.school || '', pageWidth / 2, 94, { align: 'center' });
+        pdf.setDrawColor(17, 185, 129);
+        pdf.setLineWidth(2);
+        pdf.line(margin, 110, pageWidth - margin, 110);
+    };
+
+    const drawLabelValue = (label: string, value: string | number, x: number, y: number, width = 230) => {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.text(label.toUpperCase(), x, y);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        const lines = pdf.splitTextToSize(String(value || ''), width);
+        pdf.text(lines, x, y + 14);
+    };
+
+    const drawSectionBox = (title: string, x: number, y: number, width: number, height: number) => {
+        pdf.setDrawColor(210, 214, 220);
+        pdf.setLineWidth(0.8);
+        pdf.roundedRect(x, y, width, height, 6, 6);
+        pdf.setFillColor(245, 247, 250);
+        pdf.rect(x, y, width, 26, 'F');
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
+        pdf.text(title, x + 10, y + 17);
+    };
+
+    selectedStudents.forEach((student, index) => {
+        if (index > 0) pdf.addPage();
+
+        const displayName = useMiddleInitial ? formatNameWithMiddleInitial(student.Name) : student.Name;
+        drawHeader();
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(13);
+        pdf.text('ELEMENTARY REPORT CARD', pageWidth / 2, 138, { align: 'center' });
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text('School Form 9 (SF9)', pageWidth / 2, 152, { align: 'center' });
+
+        drawSectionBox('Learner Information', margin, 176, contentWidth, 128);
+        drawLabelValue('Name', displayName, margin + 16, 214, 310);
+        drawLabelValue('LRN', student.LRN, margin + 350, 214, 130);
+        drawLabelValue('Sex', student.Sex, margin + 16, 258, 120);
+        drawLabelValue('Birthdate', student.Birthdate, margin + 140, 258, 120);
+        drawLabelValue('Age', student.Age, margin + 270, 258, 80);
+        drawLabelValue('School Year', sharedInfo.schoolYear, margin + 360, 258, 130);
+
+        drawSectionBox('School Details', margin, 324, contentWidth, 124);
+        drawLabelValue('Grade & Section', `Grade ${fileData.fileInfo.gradeLevel} - ${fileData.fileInfo.section}`, margin + 16, 362, 220);
+        drawLabelValue('Adviser', fileData.fileInfo.adviser, margin + 270, 362, 220);
+        drawLabelValue('District', sharedInfo.district || fileData.fileInfo.district, margin + 16, 406, 220);
+        drawLabelValue('Address', fileData.fileInfo.address, margin + 270, 406, 220);
+
+        drawSectionBox('Learner Address', margin, 468, contentWidth, 78);
+        drawLabelValue('Barangay', student.Barangay, margin + 16, 506, 160);
+        drawLabelValue('Municipality', student.Municipality, margin + 190, 506, 150);
+        drawLabelValue('Province', student.Province, margin + 360, 506, 140);
+
+        drawSectionBox('Grades and Attendance', margin, 566, contentWidth, 134);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        const noteLines = pdf.splitTextToSize(
+            'This PDF is generated from the imported learner record. Please review and verify all learner information, grades, attendance, and official school details against the source records before official submission.',
+            contentWidth - 32
+        );
+        pdf.text(noteLines, margin + 16, 604);
+        pdf.setDrawColor(180, 186, 196);
+        pdf.line(margin + 16, 662, pageWidth / 2 - 18, 662);
+        pdf.line(pageWidth / 2 + 18, 662, pageWidth - margin - 16, 662);
+        pdf.setFontSize(8);
+        pdf.text('Class Adviser', margin + 86, 678, { align: 'center' });
+        pdf.text(sharedInfo.schoolHeadDesignation || 'School Head', pageWidth - margin - 96, 678, { align: 'center' });
+
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`Generated from ${fileData.fileName}`, margin, pageHeight - 28);
+        pdf.text(`Page ${pdf.getNumberOfPages()}`, pageWidth - margin, pageHeight - 28, { align: 'right' });
+        pdf.setTextColor(0, 0, 0);
+
+        pdf.addPage();
+        drawHeader();
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(13);
+        pdf.text('REPORT CARD BACK PAGE', pageWidth / 2, 138, { align: 'center' });
+        drawSectionBox('Certification', margin, 176, contentWidth, 150);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(10);
+        pdf.text(pdf.splitTextToSize(
+            `This certifies that ${displayName} is officially recorded under Grade ${fileData.fileInfo.gradeLevel} - ${fileData.fileInfo.section} for School Year ${sharedInfo.schoolYear}.`,
+            contentWidth - 32
+        ), margin + 16, 214);
+        pdf.line(margin + 16, 286, pageWidth / 2 - 18, 286);
+        pdf.line(pageWidth / 2 + 18, 286, pageWidth - margin - 16, 286);
+        pdf.setFontSize(8);
+        pdf.text('Parent/Guardian Signature', margin + 100, 302, { align: 'center' });
+        pdf.text('School Head / Authorized Signatory', pageWidth - margin - 116, 302, { align: 'center' });
+
+        drawSectionBox('Remarks', margin, 354, contentWidth, 180);
+        pdf.setDrawColor(226, 232, 240);
+        for (let y = 404; y <= 500; y += 28) {
+            pdf.line(margin + 16, y, pageWidth - margin - 16, y);
+        }
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`Generated from ${fileData.fileName}`, margin, pageHeight - 28);
+        pdf.text(`Page ${pdf.getNumberOfPages()}`, pageWidth - margin, pageHeight - 28, { align: 'right' });
+        pdf.setTextColor(0, 0, 0);
+    });
+
+    return {
+        name: `SF9_${sanitizeFileName(fileData.fileInfo.gradeLevel)}_${sanitizeFileName(fileData.fileInfo.section)}_(${selectedStudents.length}_students).pdf`,
+        blob: pdf.output('blob'),
+    };
+};
+
 const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo: boolean) => {
     const {
         filesData: currentFilesData,
@@ -697,6 +851,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
         croppedLogo: currentCroppedLogo,
         selectedTemplateUrls: currentTemplateUrls,
         useMiddleInitial: useMI,
+        documentType: currentDocumentType,
     } = generationState;
 
     const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
@@ -714,6 +869,39 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
     setIsProcessing(true);
 
     try {
+        if (currentDocumentType === 'pdf') {
+            const generatedFiles = currentFilesData
+                .filter(fileData => fileData.selectedRows.size > 0)
+                .map(fileData => generateSF9Pdf({
+                    fileData,
+                    sharedInfo: currentSharedInfo,
+                    croppedLogo: currentCroppedLogo,
+                    useMiddleInitial: useMI,
+                }));
+
+            if (generatedFiles.length === 1) {
+                saveAs(generatedFiles[0].blob, generatedFiles[0].name);
+            } else {
+                const masterZip = new PizZip();
+                for (const file of generatedFiles) {
+                    const arrayBuffer = await file.blob.arrayBuffer();
+                    masterZip.file(file.name, arrayBuffer);
+                }
+                const zipBlob = masterZip.generate({ type: "blob" });
+                saveAs(zipBlob, "Generated_SF9_PDF_Documents.zip");
+            }
+
+            clearStateFromLocalStorage();
+            setIsPostGenerateDialogOpen(true);
+
+            toast({
+                variant: 'success',
+                title: 'PDF Generation Complete',
+                description: `${generatedFiles.length} PDF document(s) have been generated.`,
+            });
+            return;
+        }
+
         const generationPromises = currentFilesData
             .filter(fileData => fileData.selectedRows.size > 0)
             .map(async fileData => {
@@ -1331,7 +1519,9 @@ const formatPolishedName = (name: string): string => {
       toast({
         variant: 'destructive',
         title: 'Missing Information',
-        description: 'Please select a template for each grade level, and fill all required shared info fields.',
+        description: documentType === 'docx'
+          ? 'Please select a template for each grade level, and fill all required shared info fields.'
+          : 'Please fill all required shared info fields.',
       });
       setIsPurchaseConfirmationOpen(false);
       return;
@@ -1709,7 +1899,7 @@ const formatPolishedName = (name: string): string => {
     !sharedInfo.schoolYear;
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
-  const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected;
+  const isSF9ActionDisabled = isActionDisabled || (documentType === 'docx' && !templatesAreSelected);
 
   const handleGenerateAnother = () => {
     resetState();
@@ -2350,6 +2540,45 @@ const formatPolishedName = (name: string): string => {
                                 </TableBody>
                             </ShadTable>
                           </div>
+                        </div>
+
+                        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                            <div>
+                                <h3 className="text-lg font-medium">Document Type</h3>
+                                <p className="text-sm text-muted-foreground">Choose the generated file format and price per selected student.</p>
+                            </div>
+                            <RadioGroup
+                                value={documentType}
+                                onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
+                                className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                            >
+                                <Label
+                                    htmlFor="step-document-type-docx"
+                                    className={cn(
+                                        "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                        documentType === 'docx' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                    )}
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <RadioGroupItem value="docx" id="step-document-type-docx" />
+                                        <span className="font-semibold">DOCX</span>
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                                </Label>
+                                <Label
+                                    htmlFor="step-document-type-pdf"
+                                    className={cn(
+                                        "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                        documentType === 'pdf' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                    )}
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <RadioGroupItem value="pdf" id="step-document-type-pdf" />
+                                        <span className="font-semibold">PDF</span>
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
+                                </Label>
+                            </RadioGroup>
                         </div>
 
                         <div>
