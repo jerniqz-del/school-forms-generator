@@ -283,6 +283,10 @@ const TemplatePreviewCard = ({
   schoolHeadDesignation,
   region,
   division,
+  section,
+  schoolYear,
+  sampleStudent,
+  selectedCount,
 }: {
   gradeLevel: string;
   templateName: string | null;
@@ -293,6 +297,10 @@ const TemplatePreviewCard = ({
   schoolHeadDesignation: string;
   region: string;
   division: string;
+  section: string;
+  schoolYear: string;
+  sampleStudent: StudentRecord | null;
+  selectedCount: number;
 }) => {
   if (!templateName) {
     return (
@@ -373,6 +381,23 @@ const TemplatePreviewCard = ({
         
         <p className="text-[6px] text-center font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider py-0.5">PROGRESS REPORT CARD</p>
 
+        <div className="rounded border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-slate-950/20 p-1 leading-tight">
+          <div className="grid grid-cols-12 gap-x-1 gap-y-0.5">
+            <span className="col-span-4 text-[5px] text-gray-400">Learner</span>
+            <span className="col-span-8 truncate text-[5.5px] font-bold uppercase text-gray-700 dark:text-slate-300">
+              {sampleStudent?.Name || 'Selected learner'}
+            </span>
+            <span className="col-span-4 text-[5px] text-gray-400">LRN</span>
+            <span className="col-span-8 truncate text-[5.5px] font-mono text-gray-600 dark:text-slate-300">
+              {sampleStudent?.LRN || '000000000000'}
+            </span>
+            <span className="col-span-4 text-[5px] text-gray-400">Class</span>
+            <span className="col-span-8 truncate text-[5.5px] font-semibold text-gray-600 dark:text-slate-300">
+              Grade {gradeLevel}{section ? ` - ${section}` : ''}
+            </span>
+          </div>
+        </div>
+
         <div className="border rounded border-gray-100 dark:border-slate-800 overflow-hidden bg-gray-50/50 dark:bg-slate-950/20 max-h-[85px] min-h-[50px] flex flex-col justify-between">
           <div className="grid grid-cols-12 bg-gray-100 dark:bg-slate-800 p-0.5 text-[5.5px] font-bold text-gray-500 dark:text-slate-400 uppercase">
             <span className="col-span-8">Learning Areas</span>
@@ -401,7 +426,7 @@ const TemplatePreviewCard = ({
       </div>
 
       <div className="text-center pt-0.5 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center text-[5px] text-gray-400">
-        <span className="truncate max-w-[120px] font-medium leading-none">{templateName}</span>
+        <span className="truncate max-w-[108px] font-medium leading-none">{selectedCount} selected{schoolYear ? ` - ${schoolYear}` : ''}</span>
         <span className="font-mono bg-gray-100 dark:bg-slate-800 px-0.5 py-0.2 rounded text-[4.5px] uppercase">.docx</span>
       </div>
     </div>
@@ -498,7 +523,7 @@ export default function Home() {
   const [selectedTemplateUrls, setSelectedTemplateUrls] = useState<{ [gradeLevel: string]: string }>({});
 
   const [paperSize, setPaperSize] = useState('Custom');
-  const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
+  const [documentType] = useState<PricedDocumentType>('docx');
 
   const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
@@ -624,7 +649,7 @@ export default function Home() {
         
         return {
           ...parsedState,
-          documentType: parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
+          documentType: 'docx',
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -1900,38 +1925,13 @@ const formatPolishedName = (name: string): string => {
 
                         <div className="space-y-2">
                           <Label className="text-xs font-semibold">Document Type</Label>
-                          <RadioGroup
-                            value={documentType}
-                            onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
-                            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-                          >
-                            <Label
-                              htmlFor="document-type-docx"
-                              className={cn(
-                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
-                                documentType === 'docx' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                              )}
-                            >
-                              <span className="flex items-center gap-2">
-                                <RadioGroupItem value="docx" id="document-type-docx" />
-                                <span className="font-medium">DOCX</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
-                            </Label>
-                            <Label
-                              htmlFor="document-type-pdf"
-                              className={cn(
-                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
-                                documentType === 'pdf' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                              )}
-                            >
-                              <span className="flex items-center gap-2">
-                                <RadioGroupItem value="pdf" id="document-type-pdf" />
-                                <span className="font-medium">PDF</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
-                            </Label>
-                          </RadioGroup>
+                          <div className="flex items-center justify-between rounded-lg border border-primary bg-primary/5 p-3 text-sm">
+                            <span className="flex items-center gap-2">
+                              <FileText className="size-4 text-primary" />
+                              <span className="font-medium">DOCX</span>
+                            </span>
+                            <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                          </div>
                         </div>
                         
                         <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
@@ -2627,6 +2627,8 @@ const formatPolishedName = (name: string): string => {
                                     {uniqueGradeLevels.map(gradeLevel => {
                                         const selectedUrl = selectedTemplateUrls[gradeLevel];
                                         const selectedTemplate = templates.find(t => t.download_url === selectedUrl);
+                                        const previewFile = filesData.find(f => f.fileInfo.gradeLevel === gradeLevel);
+                                        const sampleStudent = previewFile?.studentData.find(student => previewFile.selectedRows.has(student.LRN)) || null;
                                         return (
                                             <div key={gradeLevel} className="flex flex-col md:flex-row gap-6 justify-between items-center border p-4 rounded-xl bg-card hover:shadow-sm transition-shadow">
                                                 <div className="flex-1 space-y-3 flex flex-col justify-center w-full">
@@ -2671,12 +2673,16 @@ const formatPolishedName = (name: string): string => {
                                                         gradeLevel={gradeLevel} 
                                                         templateName={selectedTemplate?.name || null}
                                                         schoolLogo={croppedLogo}
-                                                        schoolName={filesData.find(f => f.fileInfo.gradeLevel === gradeLevel)?.fileInfo.school || sharedInfo.school || ''}
-                                                        adviserName={filesData.find(f => f.fileInfo.gradeLevel === gradeLevel)?.fileInfo.adviser || ''}
+                                                        schoolName={previewFile?.fileInfo.school || sharedInfo.school || ''}
+                                                        adviserName={previewFile?.fileInfo.adviser || ''}
                                                         schoolHead={sharedInfo.schoolHead}
                                                         schoolHeadDesignation={sharedInfo.schoolHeadDesignation}
                                                         region={sharedInfo.region}
                                                         division={sharedInfo.division}
+                                                        section={previewFile?.fileInfo.section || ''}
+                                                        schoolYear={sharedInfo.schoolYear}
+                                                        sampleStudent={sampleStudent}
+                                                        selectedCount={previewFile?.selectedRows.size || 0}
                                                     />
                                                 </div>
                                             </div>
