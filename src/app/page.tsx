@@ -242,6 +242,7 @@ const paperSizeRepos: { [key: string]: RepoConfig | null } = {
 const MAX_PREVIOUS_LOGOS = 5;
 const MAX_PREVIOUS_INFO = 5;
 const DEV_PROMO_CODE = 'DEVPASS';
+const IS_DEVELOPER_PROMO_ENABLED = process.env.NODE_ENV !== 'production';
 
 
 const HistoryBadges = ({
@@ -631,6 +632,7 @@ export default function Home() {
   const clearStateFromLocalStorage = () => {
     try {
       localStorage.removeItem('appState');
+      localStorage.removeItem('checkoutSessionId');
     } catch (error) {
         console.error("Could not clear state from localStorage:", error);
     }
@@ -817,9 +819,44 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
       if (paymentStatus === 'success') {
           const restoredState = loadStateFromLocalStorage();
           if (restoredState) {
+              const checkoutSessionId = localStorage.getItem('checkoutSessionId');
+              const totalSelected = restoredState.filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+
+              if (!checkoutSessionId) {
+                  toast({
+                      variant: 'destructive',
+                      title: "Payment Verification Failed",
+                      description: "Could not find the checkout session. Please try generating again.",
+                  });
+                  clearStateFromLocalStorage();
+                  return;
+              }
+
               toast({
                   variant: 'success',
-                  title: "Payment Successful!",
+                  title: "Verifying Payment",
+                  description: "Confirming your PayMongo payment before generating files...",
+              });
+
+              const verifyResponse = await fetch('/api/verify-payment', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ checkoutSessionId, studentCount: totalSelected }),
+              });
+
+              const verifyData = await verifyResponse.json().catch(() => null);
+              if (!verifyResponse.ok || !verifyData?.verified) {
+                  toast({
+                      variant: 'destructive',
+                      title: "Payment Not Confirmed",
+                      description: verifyData?.error || "PayMongo has not confirmed this payment yet.",
+                  });
+                  return;
+              }
+
+              toast({
+                  variant: 'success',
+                  title: "Payment Confirmed!",
                   description: "Your file(s) are being generated...",
               });
               await handleGenerateSF9(restoredState, false); // isPromo is false for regular payment
@@ -1331,8 +1368,9 @@ const formatPolishedName = (name: string): string => {
             throw new Error(errorData.error || 'Failed to create payment session.');
         }
 
-        const { url } = await response.json();
-        if (url) {
+        const { url, checkoutSessionId } = await response.json();
+        if (url && checkoutSessionId) {
+            localStorage.setItem('checkoutSessionId', checkoutSessionId);
             setCheckoutUrl(url);
             setIsPurchaseConfirmationOpen(false);
             setIsCheckoutDialogOpen(true);
@@ -1347,7 +1385,7 @@ const formatPolishedName = (name: string): string => {
             }
             return; 
         } else {
-            throw new Error('Checkout URL not provided.');
+            throw new Error('Checkout URL or session ID not provided.');
         }
         
     } catch (error: any) {
@@ -1365,6 +1403,16 @@ const formatPolishedName = (name: string): string => {
 
 
   const handleApplyPromoCode = () => {
+    if (!IS_DEVELOPER_PROMO_ENABLED) {
+      setIsPromoApplied(false);
+      toast({
+        variant: "destructive",
+        title: "Promo Code Disabled",
+        description: "Developer promo codes are not available in production.",
+      });
+      return;
+    }
+
     if (promoCode.trim().toUpperCase() === DEV_PROMO_CODE) {
       setIsPromoApplied(true);
       toast({
@@ -1913,27 +1961,29 @@ const formatPolishedName = (name: string): string => {
                     </div>
                 )}
 
-                <div className="space-y-3 pt-1">
-                    <Label htmlFor="promo-code" className="text-xs font-semibold">Use Custom Promo Code</Label>
-                    <div className="flex gap-2">
-                        <Input 
-                          id="promo-code" 
-                          placeholder="Enter promo code" 
-                          value={promoCode}
-                          onChange={(e) => setPromoCode(e.target.value)}
-                          disabled={isPromoApplied}
-                          className="h-9 text-xs"
-                        />
-                        <Button 
-                          onClick={handleApplyPromoCode}
-                          disabled={isPromoApplied || !promoCode} 
-                          variant="outline"
-                          size="sm"
-                        >
-                            Apply Code
-                        </Button>
+                {IS_DEVELOPER_PROMO_ENABLED && (
+                    <div className="space-y-3 pt-1">
+                        <Label htmlFor="promo-code" className="text-xs font-semibold">Use Custom Promo Code</Label>
+                        <div className="flex gap-2">
+                            <Input
+                              id="promo-code"
+                              placeholder="Enter promo code"
+                              value={promoCode}
+                              onChange={(e) => setPromoCode(e.target.value)}
+                              disabled={isPromoApplied}
+                              className="h-9 text-xs"
+                            />
+                            <Button
+                              onClick={handleApplyPromoCode}
+                              disabled={isPromoApplied || !promoCode}
+                              variant="outline"
+                              size="sm"
+                            >
+                                Apply Code
+                            </Button>
+                        </div>
                     </div>
-                </div>
+                )}
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={handlePaymentAndGenerate}>
@@ -2197,18 +2247,25 @@ const formatPolishedName = (name: string): string => {
 
             <div className={cn(step === 3 ? 'block' : 'hidden')}>
                 <Card className="shadow-lg border-primary/20">
-                    <CardHeader>
-                        <div className="flex items-center gap-4">
-                        <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary">
-                            <Download className="size-6" />
-                        </div>
-                        <div>
-                            <CardTitle>Finalize & Generate</CardTitle>
-                            <CardDescription>Finalize shared details and download your documents.</CardDescription>
-                        </div>
+                    <CardHeader className="bg-gradient-to-r from-primary/5 via-accent/10 to-transparent border-b pb-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center justify-center size-12 rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/20 ring-4 ring-primary/10">
+                                    <Download className="size-6" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <CardTitle className="text-xl font-bold">Finalize & Generate</CardTitle>
+                                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-semibold text-xs px-2.5 py-0.5">
+                                            Step 3 of 3
+                                        </Badge>
+                                    </div>
+                                    <CardDescription className="text-sm mt-0.5">Finalize shared school details and generate your official DepEd SF9 report cards.</CardDescription>
+                                </div>
+                            </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-8">
+                    <CardContent className="space-y-8 pt-6">
                        <div>
                           <h3 className="text-lg font-medium mb-3">Per-section Information</h3>
                           <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser's name if needed.</p>
@@ -2585,16 +2642,33 @@ const formatPolishedName = (name: string): string => {
                                 <p className="text-sm text-muted-foreground">No files processed to select templates.</p>
                             )}
 
-                            <p className="text-sm text-muted-foreground px-1 mt-4">Note: Back part of the School Form 9 is included in the last page of each generated copy.</p>
-                            <div className="mt-6 border-t pt-6 flex items-center justify-between">
-                                <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
+                            <p className="text-xs text-muted-foreground px-1 mt-4 flex items-center gap-1.5">
+                                <HelpCircle className="size-3.5 text-primary shrink-0" />
+                                <span>Note: Back part of the School Form 9 is included on the last page of each generated document copy.</span>
+                            </p>
+
+                            <div className="mt-8 border-t border-primary/10 pt-6 bg-gradient-to-r from-muted/30 via-background to-muted/30 p-6 rounded-2xl border shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <Button variant="outline" size="lg" onClick={() => setStep(2)} className="h-12 px-5 font-medium border-muted-foreground/20 hover:bg-muted">
+                                        Back
+                                    </Button>
+                                    <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground border-l pl-4 py-1">
+                                        <Badge variant="secondary" className="font-semibold bg-primary/10 text-primary hover:bg-primary/15">
+                                            {totalSelectedStudents} Student{totalSelectedStudents !== 1 ? 's' : ''} Ready
+                                        </Badge>
+                                        <Badge variant="outline" className="font-medium">
+                                            {paperSize} Size
+                                        </Badge>
+                                    </div>
+                                </div>
+
                                 <Button 
                                     onClick={() => setIsSummaryDialogOpen(true)} 
                                     disabled={isSF9ActionDisabled} 
                                     size="lg" 
-                                    className="h-12 text-base"
+                                    className="w-full md:w-auto h-14 px-8 text-base font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white shadow-xl shadow-blue-500/25 hover:shadow-2xl hover:shadow-blue-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 rounded-xl"
                                 >
-                                    <FileText className="mr-2" /> Generate School Form 9
+                                    <FileText className="mr-2.5 size-5 animate-bounce" /> Generate School Form 9
                                 </Button>
                             </div>
                         </div>
@@ -2607,4 +2681,3 @@ const formatPolishedName = (name: string): string => {
     </TooltipProvider>
   );
 }
-

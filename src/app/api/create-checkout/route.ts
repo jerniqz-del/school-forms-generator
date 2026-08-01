@@ -91,12 +91,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errorMsg }, { status: response.status });
     }
 
+    const checkoutSessionId = resData?.data?.id;
     const checkoutUrl = resData?.data?.attributes?.checkout_url;
+    if (!checkoutSessionId) {
+      throw new Error('Checkout session ID not found in Paymongo response.');
+    }
     if (!checkoutUrl) {
       throw new Error('Checkout URL not found in Paymongo response.');
     }
 
-    return NextResponse.json({ url: checkoutUrl });
+    return NextResponse.json({ url: checkoutUrl, checkoutSessionId });
 
   } catch (error: any) {
     console.error('Paymongo API Route Error:', error);
