@@ -2542,45 +2542,6 @@ const formatPolishedName = (name: string): string => {
                           </div>
                         </div>
 
-                        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                            <div>
-                                <h3 className="text-lg font-medium">Document Type</h3>
-                                <p className="text-sm text-muted-foreground">Choose the generated file format and price per selected student.</p>
-                            </div>
-                            <RadioGroup
-                                value={documentType}
-                                onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
-                                className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-                            >
-                                <Label
-                                    htmlFor="step-document-type-docx"
-                                    className={cn(
-                                        "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
-                                        documentType === 'docx' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
-                                    )}
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <RadioGroupItem value="docx" id="step-document-type-docx" />
-                                        <span className="font-semibold">DOCX</span>
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
-                                </Label>
-                                <Label
-                                    htmlFor="step-document-type-pdf"
-                                    className={cn(
-                                        "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
-                                        documentType === 'pdf' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
-                                    )}
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <RadioGroupItem value="pdf" id="step-document-type-pdf" />
-                                        <span className="font-semibold">PDF</span>
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
-                                </Label>
-                            </RadioGroup>
-                        </div>
-
                         <div>
                           <h3 className="text-lg font-medium mb-3">Shared School Information</h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2851,6 +2812,44 @@ const formatPolishedName = (name: string): string => {
 
                         <div>
                             <h3 className="text-lg font-medium mb-3">Generation Options</h3>
+                            <div className="space-y-3 rounded-lg border bg-muted/20 p-4 mb-4">
+                                <div>
+                                    <h4 className="font-medium text-foreground">Document Type</h4>
+                                    <p className="text-sm text-muted-foreground">Choose the generated file format and price per selected student.</p>
+                                </div>
+                                <RadioGroup
+                                    value={documentType}
+                                    onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
+                                    className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                                >
+                                    <Label
+                                        htmlFor="step-document-type-docx"
+                                        className={cn(
+                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                            documentType === 'docx' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <RadioGroupItem value="docx" id="step-document-type-docx" />
+                                            <span className="font-semibold">DOCX</span>
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                                    </Label>
+                                    <Label
+                                        htmlFor="step-document-type-pdf"
+                                        className={cn(
+                                            "flex cursor-pointer items-center justify-between rounded-lg border bg-background p-4 text-sm transition-colors",
+                                            documentType === 'pdf' ? 'border-primary ring-2 ring-primary/10' : 'hover:bg-muted/50'
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <RadioGroupItem value="pdf" id="step-document-type-pdf" />
+                                            <span className="font-semibold">PDF</span>
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
+                                    </Label>
+                                </RadioGroup>
+                            </div>
                              {uniqueGradeLevels.length > 0 ? (
                                 <div className="space-y-4">
                                     {uniqueGradeLevels.map(gradeLevel => {
