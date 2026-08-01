@@ -1,1 +1,3 @@
-// This file is intentionally blank.
+export default function Page() {
+  return null;
+}

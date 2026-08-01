@@ -102,6 +102,7 @@ type SharedInfo = {
     district: string;
     division: string;
     region: string;
+    address: string;
     schoolYear: string;
 };
 
@@ -132,6 +133,7 @@ const initialSharedInfo: SharedInfo = {
     district: '',
     division: '',
     region: 'Region V',
+    address: '',
     schoolYear: '',
 };
 
@@ -864,6 +866,7 @@ export default function Home() {
             region: parsed.region?.[0] || 'Region V',
             division: parsed.division?.[0] || '',
             district: parsed.district?.[0] || '',
+            address: parsed.address?.[0] || '',
             schoolYear: parsed.schoolYear?.[0] || '',
         });
       }

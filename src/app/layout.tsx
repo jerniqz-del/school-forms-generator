@@ -1,16 +1,9 @@
 'use client';
-import { Inter as FontSans } from "next/font/google";
 
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from '@/components/theme-provider';
 import { DisclaimerProvider } from '@/app/(main)/disclaimer-context';
-import { cn } from "@/lib/utils";
-
-const fontSans = FontSans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
 
 export default function RootLayout({
   children,
@@ -23,10 +16,7 @@ export default function RootLayout({
         <title>School Form 9 Dashboard</title>
         <meta name="description" content="Generate Form 9 instantly from your Form 1 Excel file." />
       </head>
-      <body className={cn(
-          "min-h-screen bg-background font-sans antialiased",
-          fontSans.variable
-        )}>
+      <body className="min-h-screen bg-background font-sans antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
