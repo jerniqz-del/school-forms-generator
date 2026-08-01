@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { calculateGenerationPricing, isPricedDocumentType } from '@/lib/pricing';
 
 const PAYMONGO_API_URL = 'https://api.paymongo.com/v1/checkout_sessions';
-
-function calculateExpectedAmountInCentavos(studentCount: number) {
-  const rawTotal = studentCount * 2.5;
-  let discountPercent = 0;
-
-  if (rawTotal >= 100) {
-    discountPercent = 10;
-  } else if (rawTotal >= 50) {
-    discountPercent = 5;
-  }
-
-  return Math.max(2000, Math.round((rawTotal - rawTotal * (discountPercent / 100)) * 100));
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,14 +13,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { checkoutSessionId, studentCount } = await request.json();
+    const { checkoutSessionId, studentCount, documentType } = await request.json();
 
     if (
       typeof checkoutSessionId !== 'string' ||
       !checkoutSessionId.startsWith('cs_') ||
       typeof studentCount !== 'number' ||
       !Number.isFinite(studentCount) ||
-      studentCount <= 0
+      studentCount <= 0 ||
+      !isPricedDocumentType(documentType)
     ) {
       return NextResponse.json({ verified: false, error: 'Invalid payment verification request.' }, { status: 400 });
     }
@@ -53,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payments = data?.data?.attributes?.payments ?? [];
-    const expectedAmount = calculateExpectedAmountInCentavos(studentCount);
+    const expectedAmount = calculateGenerationPricing(studentCount, documentType).amountInCentavos;
     const paidPayment = payments.find((payment: any) => {
       const attrs = payment?.attributes ?? payment;
       return attrs?.status === 'paid' && attrs?.currency === 'PHP' && attrs?.amount >= expectedAmount;

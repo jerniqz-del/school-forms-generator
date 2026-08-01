@@ -71,6 +71,7 @@ import { useDisclaimer } from '@/app/(main)/disclaimer-context';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { DOCUMENT_TYPE_PRICING, PricedDocumentType, calculateGenerationPricing } from '@/lib/pricing';
 
 type StudentRecord = {
   LRN: string;
@@ -162,6 +163,7 @@ type AppState = {
   croppedLogo: string | null;
   selectedTemplateUrls: { [gradeLevel: string]: string };
   useMiddleInitial: boolean;
+  documentType: PricedDocumentType;
 };
 
 const regions = [
@@ -496,6 +498,7 @@ export default function Home() {
   const [selectedTemplateUrls, setSelectedTemplateUrls] = useState<{ [gradeLevel: string]: string }>({});
 
   const [paperSize, setPaperSize] = useState('Custom');
+  const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
 
   const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
@@ -604,13 +607,14 @@ export default function Home() {
       croppedLogo,
       selectedTemplateUrls,
       useMiddleInitial,
+      documentType,
     };
     try {
       localStorage.setItem('appState', JSON.stringify(stateToSave));
     } catch(e) {
       console.error("Could not save state to localStorage", e);
     }
-  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial]);
+  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType]);
 
   const loadStateFromLocalStorage = useCallback((): AppState | null => {
     try {
@@ -620,6 +624,7 @@ export default function Home() {
         
         return {
           ...parsedState,
+          documentType: parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -821,6 +826,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
           if (restoredState) {
               const checkoutSessionId = localStorage.getItem('checkoutSessionId');
               const totalSelected = restoredState.filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+              const restoredDocumentType = restoredState.documentType || 'docx';
 
               if (!checkoutSessionId) {
                   toast({
@@ -841,7 +847,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
               const verifyResponse = await fetch('/api/verify-payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ checkoutSessionId, studentCount: totalSelected }),
+                  body: JSON.stringify({ checkoutSessionId, studentCount: totalSelected, documentType: restoredDocumentType }),
               });
 
               const verifyData = await verifyResponse.json().catch(() => null);
@@ -1338,6 +1344,7 @@ const formatPolishedName = (name: string): string => {
       croppedLogo,
       selectedTemplateUrls,
       useMiddleInitial,
+      documentType,
     };
     
     setLoadingMessage('Processing your request...');
@@ -1360,7 +1367,7 @@ const formatPolishedName = (name: string): string => {
         const response = await fetch('/api/create-checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ studentCount: totalSelected }),
+            body: JSON.stringify({ studentCount: totalSelected, documentType }),
         });
 
         if (!response.ok) {
@@ -1683,17 +1690,14 @@ const formatPolishedName = (name: string): string => {
   const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
   
-  const rawTotal = totalSelectedStudents * 2.5;
-  let autoDiscountPercent = 0;
-  if (rawTotal >= 100) {
-    autoDiscountPercent = 10;
-  } else if (rawTotal >= 50) {
-    autoDiscountPercent = 5;
-  }
-  const autoDiscountAmount = rawTotal * (autoDiscountPercent / 100);
-  const subtotalAfterDiscount = rawTotal - autoDiscountAmount;
-  const isUnderMinimum = subtotalAfterDiscount < 20;
-  const finalAmountToPay = isUnderMinimum ? 20 : subtotalAfterDiscount;
+  const pricing = calculateGenerationPricing(totalSelectedStudents, documentType);
+  const documentTypeLabel = DOCUMENT_TYPE_PRICING[documentType].label;
+  const rawTotal = pricing.rawTotal;
+  const autoDiscountPercent = pricing.discountPercent;
+  const autoDiscountAmount = pricing.discountAmount;
+  const subtotalAfterDiscount = pricing.subtotalAfterDiscount;
+  const isUnderMinimum = pricing.isUnderMinimum;
+  const finalAmountToPay = pricing.finalAmount;
   
   const isActionDisabled = isProcessing || totalSelectedStudents === 0 || 
     !sharedInfo.school ||
@@ -1848,6 +1852,7 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label="Total Files" value={filesData.length} />
                 <SummaryItem label="Total Selected Students" value={totalSelectedStudents} />
                 <SummaryItem label="Paper Size" value={paperSize} />
+                <SummaryItem label="Document Type" value={`${documentTypeLabel} - PHP ${pricing.ratePerStudent.toFixed(2)} per student`} />
                 <SummaryItem label="School Name" value={sharedInfo.school} />
                 <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
                 <SummaryItem label="School Head Designation" value={sharedInfo.schoolHeadDesignation} />
@@ -1892,11 +1897,51 @@ const formatPolishedName = (name: string): string => {
                         <AlertDialogDescription>
                           Review your order summary before proceeding to payment.
                         </AlertDialogDescription>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold">Document Type</Label>
+                          <RadioGroup
+                            value={documentType}
+                            onValueChange={(value) => setDocumentType(value as PricedDocumentType)}
+                            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                          >
+                            <Label
+                              htmlFor="document-type-docx"
+                              className={cn(
+                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
+                                documentType === 'docx' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <RadioGroupItem value="docx" id="document-type-docx" />
+                                <span className="font-medium">DOCX</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                            </Label>
+                            <Label
+                              htmlFor="document-type-pdf"
+                              className={cn(
+                                "flex cursor-pointer items-center justify-between rounded-lg border p-3 text-sm transition-colors",
+                                documentType === 'pdf' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <RadioGroupItem value="pdf" id="document-type-pdf" />
+                                <span className="font-medium">PDF</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">PHP 2.00/student</span>
+                            </Label>
+                          </RadioGroup>
+                        </div>
                         
                         <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
                           <div className="flex justify-between items-center text-muted-foreground">
+                            <span>Document Type:</span>
+                            <span className="font-semibold text-foreground">{documentTypeLabel}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-muted-foreground">
                             <span>Selected Students:</span>
-                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) × ₱2.50</span>
+                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) x PHP {pricing.ratePerStudent.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Base Rate Total:</span>
