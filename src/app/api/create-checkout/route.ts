@@ -21,12 +21,12 @@ export async function POST(request: NextRequest) {
     const rawTotal = studentCount * 2.50;
 
     // Automatic Tiered/Volume Promo Discounts:
-    // > 100 to 250 -> 5% discount
-    // > 250 -> 10% discount
+    // >= 50 to 100 -> 5% discount
+    // >= 100 -> 10% discount
     let discountPercent = 0;
-    if (rawTotal > 250) {
+    if (rawTotal >= 100) {
       discountPercent = 10;
-    } else if (rawTotal > 100) {
+    } else if (rawTotal >= 50) {
       discountPercent = 5;
     }
 

@@ -1637,9 +1637,9 @@ const formatPolishedName = (name: string): string => {
   
   const rawTotal = totalSelectedStudents * 2.5;
   let autoDiscountPercent = 0;
-  if (rawTotal > 250) {
+  if (rawTotal >= 100) {
     autoDiscountPercent = 10;
-  } else if (rawTotal > 100) {
+  } else if (rawTotal >= 50) {
     autoDiscountPercent = 5;
   }
   const autoDiscountAmount = rawTotal * (autoDiscountPercent / 100);
@@ -1899,14 +1899,14 @@ const formatPolishedName = (name: string): string => {
                             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                                 <Tag className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                                 <span>
-                                    <strong>{autoDiscountPercent}% Bulk Discount Applied!</strong> ({rawTotal > 250 ? 'Order exceeds ₱250.00' : 'Order between ₱100.00 and ₱250.00'}).
+                                    <strong>{autoDiscountPercent}% Bulk Discount Applied!</strong> ({rawTotal >= 100 ? 'Order ₱100.00 or more' : 'Order between ₱50.00 and ₱100.00'}).
                                 </span>
                             </div>
                         ) : (
                             <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
                                 <Percent className="size-3.5 shrink-0 text-primary" />
                                 <span>
-                                    <strong>Bulk Promo Discount:</strong> Save <strong>5%</strong> on orders over ₱100.00, and <strong>10%</strong> on orders over ₱250.00!
+                                    <strong>Bulk Promo Discount:</strong> Save <strong>5%</strong> on orders ₱50.00 and up, and <strong>10%</strong> on orders ₱100.00 and up!
                                 </span>
                             </div>
                         )}
