@@ -1,0 +1,2610 @@
+
+
+'use client';
+
+import { useState, useRef, ReactNode, useEffect, useCallback } from 'react';
+import Image from 'next/image';
+import * as XLSX from 'xlsx';
+import ReactCrop, { type Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+import Docxtemplater from 'docxtemplater';
+import PizZip from 'pizzip';
+import ImageModule from 'docxtemplater-image-module-free';
+import { saveAs } from 'file-saver';
+
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, Tag } from 'lucide-react';
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
+import { Progress } from '@/components/ui/progress';
+import {
+  Table as ShadTable,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogFooter,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel"
+import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Badge } from '@/components/ui/badge';
+import { AppHeader } from '@/app/app-header';
+import { useDisclaimer } from '@/app/(main)/disclaimer-context';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
+type StudentRecord = {
+  LRN: string;
+  Name: string; // This will now store the original name from the file
+  Sex: 'Male' | 'Female' | '';
+  Birthdate: string;
+  Age: number | '';
+  Barangay: string;
+  Municipality: string;
+  Province: string;
+};
+
+type FileInfo = {
+    gradeLevel: string;
+    section: string;
+    adviser: string;
+    school: string;
+    district: string;
+    division?: string;
+    region?: string;
+    address: string;
+};
+
+type SharedInfo = {
+    school: string;
+    schoolHead: string;
+    schoolHeadDesignation: string;
+    district: string;
+    division: string;
+    region: string;
+    schoolYear: string;
+};
+
+type FileData = {
+    id: string;
+    fileName: string;
+    studentData: StudentRecord[];
+    fileInfo: FileInfo;
+    selectedRows: Set<string>;
+    searchTerm: string;
+};
+
+type TemplateFile = {
+  name: string;
+  download_url: string;
+};
+
+type RepoConfig = {
+    user: string;
+    repo: string;
+    path?: string;
+};
+
+const initialSharedInfo: SharedInfo = {
+    school: '',
+    schoolHead: '',
+    schoolHeadDesignation: '',
+    district: '',
+    division: '',
+    region: 'Region V',
+    schoolYear: '',
+};
+
+type PreviousInfo = {
+    schoolHead: string[];
+    schoolHeadDesignation: string[];
+    region: string[];
+    division: string[];
+    district: string[];
+    address: string[];
+    school: string[];
+    schoolYear: string[];
+};
+
+const initialPreviousInfo: PreviousInfo = {
+    schoolHead: [],
+    schoolHeadDesignation: [],
+    region: [],
+    division: [],
+    district: [],
+    address: [],
+    school: [],
+    schoolYear: [],
+};
+
+type AppState = {
+  filesData: FileData[];
+  sharedInfo: SharedInfo;
+  croppedLogo: string | null;
+  selectedTemplateUrls: { [gradeLevel: string]: string };
+  useMiddleInitial: boolean;
+};
+
+const regions = [
+    "Region I", "Region II", "Region III", "Region IV-A", "Region IV-B", "Region V", 
+    "Region VI", "Region VII", "Region VIII", "Region IX", "Region X", "Region XI", 
+    "Region XII", "Region XIII", "NCR", "CAR", "BARMM"
+];
+
+let schoolYears = Array.from({ length: 5 }, (_, i) => `${2025 + i}-${2026 + i}`);
+
+
+const LoadingOverlay = ({ message }: { message: string }) => (
+    <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-50 backdrop-blur-sm">
+        <Loader2 className="size-12 animate-spin text-primary" />
+        <p className="mt-4 text-lg text-muted-foreground">{message}</p>
+    </div>
+);
+
+function centerAspectCrop(
+  mediaWidth: number,
+  mediaHeight: number,
+  aspect: number,
+) {
+  return centerCrop(
+    makeAspectCrop(
+      {
+        unit: '%',
+        width: 90,
+      },
+      aspect,
+      mediaWidth,
+      mediaHeight,
+    ),
+    mediaWidth,
+    mediaHeight,
+  )
+}
+
+const masterTemplateOrder = [
+  'Kinder Report Card.docx',
+  'Kinder PECD.docx',
+  'Grade One.docx',
+  'Grade Two.docx',
+  'Grade Three.docx',
+  'Grade Four.docx',
+  'Grade Five.docx',
+  'Grade Six.docx',
+  'Grade Seven (Year 1).docx',
+  'Grade Eight (Year 2).docx',
+  'Grade Nine (Year 3).docx',
+  'Grade Ten (Year 4).docx',
+  'Grade Eleven.docx',
+  'Grade Twelve.docx',
+];
+
+const gradeToTemplateMap: { [key: string]: string } = {
+  'Kinder': 'Kinder Report Card.docx',
+  'One': 'Grade One.docx',
+  'Two': 'Grade Two.docx',
+  'Three': 'Grade Three.docx',
+  'Four': 'Grade Four.docx',
+  'Five': 'Grade Five.docx',
+  'Six': 'Grade Six.docx',
+  'Seven': 'Grade Seven (Year 1).docx',
+  'Eight': 'Grade Eight (Year 2).docx',
+  'Nine': 'Grade Nine (Year 3).docx',
+  'Ten': 'Grade Ten (Year 4).docx',
+  'Eleven': 'Grade Eleven.docx',
+  'Twelve': 'Grade Twelve.docx',
+};
+
+const paperSizeRepos: { [key: string]: RepoConfig | null } = {
+    'A4': null,
+    'A5': null,
+    'Custom': { user: 'jerniqz-del', repo: 'schoolform9' },
+};
+
+const MAX_PREVIOUS_LOGOS = 5;
+const MAX_PREVIOUS_INFO = 5;
+const DEV_PROMO_CODE = 'DEVPASS';
+
+
+const HistoryBadges = ({
+  items,
+  onSelect,
+}: {
+  items: string[];
+  onSelect: (item: string) => void;
+}) => {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      <span className="text-xs text-muted-foreground mr-1">Recently Used:</span>
+      {items.map((item) => (
+        <Badge
+          key={item}
+          variant="secondary"
+          className="cursor-pointer hover:bg-primary/20"
+          onClick={() => onSelect(item)}
+        >
+          {item}
+        </Badge>
+      ))}
+    </div>
+  );
+};
+
+
+const TemplatePreviewCard = ({
+  gradeLevel,
+  templateName,
+  schoolLogo,
+  schoolName,
+  adviserName,
+  schoolHead,
+  schoolHeadDesignation,
+  region,
+  division,
+}: {
+  gradeLevel: string;
+  templateName: string | null;
+  schoolLogo: string | null;
+  schoolName: string;
+  adviserName: string;
+  schoolHead: string;
+  schoolHeadDesignation: string;
+  region: string;
+  division: string;
+}) => {
+  if (!templateName) {
+    return (
+      <div className="w-[180px] h-[240px] border border-dashed rounded-lg flex flex-col items-center justify-center bg-muted/10 text-muted-foreground p-3 transition-colors hover:bg-muted/20">
+        <FileIcon className="size-8 stroke-[1.2] mb-2 animate-pulse text-muted-foreground/50" />
+        <span className="text-[11px] font-semibold text-center">No Template Selected</span>
+        <span className="text-[9px] text-center opacity-75 mt-1 leading-normal">Choose layout to see a live visual mockup</span>
+      </div>
+    );
+  }
+
+  const isKinder = templateName.toLowerCase().includes('kinder');
+  const isPECD = templateName.toLowerCase().includes('pecd');
+  const isSHS = templateName.toLowerCase().includes('eleven') || templateName.toLowerCase().includes('twelve');
+  
+  let typeLabel = "Elementary Report Card";
+  let subjectList = ["English", "Mathematics", "Science", "Filipino", "MAPEH"];
+  let primaryColor = "border-t-emerald-500";
+  let badgeColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400";
+
+  if (isPECD) {
+    typeLabel = "Kinder PECD Card";
+    subjectList = ["Gross Motor", "Fine Motor", "Self-Help", "Receptive Lang"];
+    primaryColor = "border-t-pink-500";
+    badgeColor = "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-400";
+  } else if (isKinder) {
+    typeLabel = "Kinder Report Card";
+    subjectList = ["Socio-Emotional", "Language & Literacy", "Mathematics", "Physical Health"];
+    primaryColor = "border-t-purple-500";
+    badgeColor = "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400";
+  } else if (isSHS) {
+    typeLabel = "SHS Report Card";
+    subjectList = ["Oral Communication", "General Mathematics", "Earth & Life Science", "Empowerment Tech"];
+    primaryColor = "border-t-amber-500";
+    badgeColor = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400";
+  } else if (['seven', 'eight', 'nine', 'ten'].some(g => gradeLevel.toLowerCase().includes(g) || templateName.toLowerCase().includes(g))) {
+    typeLabel = "Junior High School";
+    subjectList = ["English", "Mathematics", "Science", "Araling Panlipunan", "MAPEH", "TLE"];
+    primaryColor = "border-t-blue-500";
+    badgeColor = "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400";
+  }
+
+  return (
+    <div className={cn(
+      "w-[180px] h-[240px] border rounded-lg bg-white text-[8px] text-gray-800 p-2.5 shadow-sm relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:shadow-md",
+      "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
+      "border-t-4", primaryColor
+    )}>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
+        <FileIcon className="size-24" />
+      </div>
+
+      <div className="space-y-0.5 text-center border-b pb-1 border-gray-100 dark:border-slate-800">
+        <p className="text-[5.5px] uppercase tracking-wider text-gray-400 font-semibold leading-none">Republic of the Philippines</p>
+        <p className="text-[6.5px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-400 leading-normal">Department of Education</p>
+        {region && <p className="text-[5.5px] text-gray-500 leading-none">{region}</p>}
+        {division && <p className="text-[5.5px] text-gray-500 leading-none">{division}</p>}
+        
+        <div className="flex items-center justify-center gap-1 mt-0.5 px-0.5">
+          {schoolLogo ? (
+            <img src={schoolLogo} alt="School Logo" className="size-3.5 rounded-full object-cover border border-gray-100 dark:border-slate-800" />
+          ) : (
+            <div className="size-3.5 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-[5px] text-gray-400 font-bold border border-gray-200 dark:border-slate-700 leading-none">Logo</div>
+          )}
+          <span className="text-[6px] font-bold truncate max-w-[120px] uppercase text-gray-700 dark:text-slate-300">
+            {schoolName || "YOUR SCHOOL NAME"}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex-1 py-1 flex flex-col justify-between min-h-0">
+        <div className="flex items-center justify-between pt-0.5">
+          <span className={cn("text-[6px] px-1 py-0.5 rounded-full font-bold uppercase tracking-wider leading-none", badgeColor)}>
+            {typeLabel}
+          </span>
+          <span className="text-[6px] text-gray-400 font-mono">SF9</span>
+        </div>
+        
+        <p className="text-[6px] text-center font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider py-0.5">PROGRESS REPORT CARD</p>
+
+        <div className="border rounded border-gray-100 dark:border-slate-800 overflow-hidden bg-gray-50/50 dark:bg-slate-950/20 max-h-[85px] min-h-[50px] flex flex-col justify-between">
+          <div className="grid grid-cols-12 bg-gray-100 dark:bg-slate-800 p-0.5 text-[5.5px] font-bold text-gray-500 dark:text-slate-400 uppercase">
+            <span className="col-span-8">Learning Areas</span>
+            <span className="col-span-4 text-center">Grade</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-slate-800 flex-1 flex flex-col justify-around">
+            {subjectList.slice(0, 4).map((sub, idx) => (
+              <div key={sub} className="grid grid-cols-12 p-0.5 leading-none items-center">
+                <span className="col-span-8 font-medium truncate text-[6px] text-gray-600 dark:text-slate-300">{sub}</span>
+                <span className="col-span-4 text-center font-mono font-bold text-primary text-[6.5px]">{86 + (idx * 3)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1 border-t pt-1 border-gray-100 dark:border-slate-800 text-[5px] mt-0.5 leading-tight">
+          <div className="min-w-0">
+            <p className="text-gray-400 leading-none">Class Adviser</p>
+            <p className="font-bold text-gray-700 dark:text-slate-300 truncate uppercase mt-0.5">{adviserName || "Adviser Name"}</p>
+          </div>
+          <div className="text-right min-w-0">
+            <p className="text-gray-400 leading-none">{schoolHeadDesignation || "School Head"}</p>
+            <p className="font-bold text-gray-700 dark:text-slate-300 truncate uppercase mt-0.5">{schoolHead || "School Head Name"}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-center pt-0.5 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center text-[5px] text-gray-400">
+        <span className="truncate max-w-[120px] font-medium leading-none">{templateName}</span>
+        <span className="font-mono bg-gray-100 dark:bg-slate-800 px-0.5 py-0.2 rounded text-[4.5px] uppercase">.docx</span>
+      </div>
+    </div>
+  );
+};
+
+
+const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
+    const steps = [
+        { id: 1, title: 'Upload' },
+        { id: 2, title: 'Preview & Select' },
+        { id: 3, title: 'Generate' }
+    ];
+
+    const canNavigateTo = (stepId: number) => {
+        return stepId < currentStep;
+    };
+
+    return (
+        <nav aria-label="Progress">
+            <ol role="list" className="flex items-center">
+                {steps.map((step, stepIdx) => (
+                    <li key={step.title} className={cn("relative", { 'flex-1': stepIdx !== steps.length - 1 })}>
+                        {currentStep > step.id ? (
+                            <>
+                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                    <div className="h-0.5 w-full bg-primary" />
+                                </div>
+                                <button
+                                    onClick={() => canNavigateTo(step.id) && setStep(step.id)}
+                                    className={cn("relative flex h-8 w-8 items-center justify-center rounded-full bg-primary", canNavigateTo(step.id) ? 'hover:bg-primary/80' : 'cursor-default')}
+                                >
+                                    <CheckCircle2 className="h-5 w-5 text-white" aria-hidden="true" />
+                                    <span className="absolute -bottom-6 text-xs font-medium text-primary text-center whitespace-nowrap">{step.title}</span>
+                                </button>
+                            </>
+                        ) : currentStep === step.id ? (
+                            <>
+                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                    <div className="h-0.5 w-full bg-border" />
+                                </div>
+                                <div
+                                    className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-primary bg-background"
+                                    aria-current="step"
+                                >
+                                    <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+                                    <span className="absolute -bottom-6 text-xs font-medium text-primary text-center whitespace-nowrap">{step.title}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                    <div className="h-0.5 w-full bg-border" />
+                                </div>
+                                <div
+                                    className="group relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-border bg-background"
+                                >
+                                    <span className="h-2.5 w-2.5 rounded-full bg-transparent" aria-hidden="true" />
+                                    <span className="absolute -bottom-6 text-xs font-medium text-muted-foreground text-center whitespace-nowrap">{step.title}</span>
+                                </div>
+                            </>
+                        )}
+                    </li>
+                ))}
+            </ol>
+        </nav>
+    );
+};
+
+
+export default function Home() {
+  const [step, setStep] = useState(1);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Processing file, please wait...');
+  
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [filesData, setFilesData] = useState<FileData[]>([]);
+  const [openAccordions, setOpenAccordions] = useState<string[]>([]);
+  const [sharedInfo, setSharedInfo] = useState<SharedInfo>(initialSharedInfo);
+  
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const [croppedLogo, setCroppedLogo] = useState<string | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const imgRef = useRef<HTMLImageElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const fileUploadRef = useRef<HTMLInputElement>(null);
+  const [previousLogos, setPreviousLogos] = useState<string[]>([]);
+  const [previousInfo, setPreviousInfo] = useState<PreviousInfo>(initialPreviousInfo);
+  
+  const [templates, setTemplates] = useState<TemplateFile[]>([]);
+  const [isTemplatesLoading, setIsTemplatesLoading] = useState(false);
+  const [selectedTemplateUrls, setSelectedTemplateUrls] = useState<{ [gradeLevel: string]: string }>({});
+
+  const [paperSize, setPaperSize] = useState('Custom');
+
+  const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [isPurchaseConfirmationOpen, setIsPurchaseConfirmationOpen] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
+
+  const [promoCode, setPromoCode] = useState('');
+  const [isPromoApplied, setIsPromoApplied] = useState(false);
+  
+  const { isDisclaimerOpen, setIsDisclaimerOpen, disclaimerAgreed, setDisclaimerAgreed } = useDisclaimer();
+  
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  const [useMiddleInitial, setUseMiddleInitial] = useState(true);
+
+  const { toast } = useToast();
+  
+  useEffect(() => {
+    try {
+      const savedLogos = sessionStorage.getItem('previousSchoolLogos');
+      if (savedLogos) {
+        setPreviousLogos(JSON.parse(savedLogos));
+      }
+      const savedInfo = sessionStorage.getItem('previousSchoolInfo');
+      if (savedInfo) {
+        const parsed = JSON.parse(savedInfo);
+        setPreviousInfo(parsed);
+        // Pre-fill shared info from the most recent history
+        setSharedInfo({
+            school: parsed.school?.[0] || '',
+            schoolHead: parsed.schoolHead?.[0] || '',
+            schoolHeadDesignation: parsed.schoolHeadDesignation?.[0] || '',
+            region: parsed.region?.[0] || 'Region V',
+            division: parsed.division?.[0] || '',
+            district: parsed.district?.[0] || '',
+            schoolYear: parsed.schoolYear?.[0] || '',
+        });
+      }
+    } catch (error) {
+      console.error("Could not load data from sessionStorage:", error);
+    }
+  }, []);
+
+  const handleAgreeToDisclaimer = () => {
+    try {
+      sessionStorage.setItem('disclaimerAgreed', 'true');
+    } catch (error) {
+      console.error("Could not save disclaimer agreement to sessionStorage:", error);
+    }
+    setDisclaimerAgreed(true);
+    setIsDisclaimerOpen(false);
+  };
+
+  const handleUploadAreaClick = () => {
+    fileUploadRef.current?.click();
+  };
+
+  const updatePreviousInfo = useCallback(() => {
+    const newPreviousInfo = { ...previousInfo };
+    let hasChanged = false;
+
+    // Update with shared info
+    (Object.keys(sharedInfo) as Array<keyof SharedInfo>).forEach(key => {
+        if (key in newPreviousInfo) {
+            const value = sharedInfo[key];
+            const history = newPreviousInfo[key as keyof PreviousInfo] as string[];
+            if (value && !history.includes(value)) {
+                (newPreviousInfo[key as keyof PreviousInfo] as string[]) = [value, ...history].slice(0, MAX_PREVIOUS_INFO);
+                hasChanged = true;
+            }
+        }
+    });
+
+    // Update with file-specific info
+    filesData.forEach(fileData => {
+        ['school', 'district', 'address'].forEach(key => {
+            const value = fileData.fileInfo[key as keyof FileInfo];
+            const history = newPreviousInfo[key as keyof PreviousInfo] as string[];
+            if (value && !history.includes(value)) {
+                (newPreviousInfo[key as keyof PreviousInfo] as string[]) = [value, ...history].slice(0, MAX_PREVIOUS_INFO);
+                hasChanged = true;
+            }
+        });
+    });
+
+
+    if (hasChanged) {
+        setPreviousInfo(newPreviousInfo);
+        try {
+            sessionStorage.setItem('previousSchoolInfo', JSON.stringify(newPreviousInfo));
+        } catch (error) {
+            console.error("Could not save previous info to sessionStorage:", error);
+        }
+    }
+}, [filesData, sharedInfo, previousInfo]);
+
+
+  const saveStateToLocalStorage = useCallback(() => {
+    const stateToSave: AppState = {
+      filesData: filesData.map(f => ({ ...f, selectedRows: Array.from(f.selectedRows) } as any)),
+      sharedInfo,
+      croppedLogo,
+      selectedTemplateUrls,
+      useMiddleInitial,
+    };
+    try {
+      localStorage.setItem('appState', JSON.stringify(stateToSave));
+    } catch(e) {
+      console.error("Could not save state to localStorage", e);
+    }
+  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial]);
+
+  const loadStateFromLocalStorage = useCallback((): AppState | null => {
+    try {
+      const savedState = localStorage.getItem('appState');
+      if (savedState) {
+        const parsedState = JSON.parse(savedState) as any; // any for intermediate step
+        
+        return {
+          ...parsedState,
+          filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
+        };
+      }
+    } catch (error) {
+      console.error("Could not load state from localStorage:", error);
+    }
+    return null;
+  }, []);
+
+  const clearStateFromLocalStorage = () => {
+    try {
+      localStorage.removeItem('appState');
+    } catch (error) {
+        console.error("Could not clear state from localStorage:", error);
+    }
+  };
+  
+const formatNameWithMiddleInitial = (name: string): string => {
+    const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
+    
+    let cleanedName = name.trim().toUpperCase()
+        .replace(/\s*,\s*/g, ", ") // Normalize commas
+        .replace(/ , -/g, '')
+        .replace(/\s+/g, ' ');
+
+    const parts = cleanedName.split(', ').filter(p => p.trim() !== '');
+
+    if (parts.length < 3) {
+      return cleanedName;
+    }
+
+    const lastName = parts[0];
+    let firstName = parts[1];
+    let middleAndSuffix = parts.slice(2).join(' ');
+
+    let foundSuffix = "";
+    let middleName = middleAndSuffix;
+
+    for (const suffix of SUFFIX_LIST) {
+        if (middleAndSuffix.startsWith(suffix + ' ') || middleAndSuffix === suffix) {
+            foundSuffix = suffix;
+            middleName = middleAndSuffix.substring(suffix.length).trim();
+            break;
+        }
+        if (firstName.endsWith(' ' + suffix)) {
+            foundSuffix = suffix;
+            firstName = firstName.substring(0, firstName.length - suffix.length - 1).trim();
+            break;
+        }
+    }
+
+    if (middleName) {
+        const hyphenIndex = middleName.indexOf(' - ');
+        if (hyphenIndex !== -1) {
+            middleName = middleName.substring(0, hyphenIndex).trim();
+        }
+
+        const middleInitial = middleName.charAt(0) + '.';
+        return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''} ${middleInitial}`;
+    }
+    
+    return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''}`;
+};
+
+const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo: boolean) => {
+    const {
+        filesData: currentFilesData,
+        sharedInfo: currentSharedInfo,
+        croppedLogo: currentCroppedLogo,
+        selectedTemplateUrls: currentTemplateUrls,
+        useMiddleInitial: useMI,
+    } = generationState;
+
+    const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
+
+    if (totalSelected === 0) {
+        toast({
+            variant: 'destructive',
+            title: 'No Students Selected',
+            description: 'Please select at least one student from any file.',
+        });
+        return;
+    }
+    
+    setLoadingMessage('Generating documents, please wait...');
+    setIsProcessing(true);
+
+    try {
+        const generationPromises = currentFilesData
+            .filter(fileData => fileData.selectedRows.size > 0)
+            .map(async fileData => {
+                const templateUrl = currentTemplateUrls[fileData.fileInfo.gradeLevel];
+                if (!templateUrl) {
+                    throw new Error(`No template selected for ${fileData.fileInfo.gradeLevel}.`);
+                }
+
+                const response = await fetch(`/api/download-template?url=${encodeURIComponent(templateUrl)}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch template for ${fileData.fileName}: ${response.statusText}`);
+                }
+                const templateBlob = await response.arrayBuffer();
+                const zip = new PizZip(templateBlob);
+
+                const imageModule = new ImageModule({
+                    centered: false,
+                    getImage: (tag: string) => {
+                        if (tag === 'logo' && currentCroppedLogo) {
+                            return Buffer.from(currentCroppedLogo.split(',')[1], 'base64');
+                        }
+                        return null;
+                    },
+                    getSize: () => [54, 54],
+                });
+
+                const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
+
+                const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
+                let exportData = selectedStudents.map((student, index) => ({
+                    ...student,
+                    'No.': index + 1,
+                    Name: useMI ? formatNameWithMiddleInitial(student.Name) : student.Name,
+                }));
+                
+                if (isPromo) {
+                    const blankStudent: StudentRecord = { LRN: '', Name: '', Sex: '', Birthdate: '', Age: '', Barangay: '', Municipality: '', Province: '' };
+                    const lastStudentNumber = exportData.length;
+                    exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
+                    exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
+                }
+
+                const finalData: any = {
+                    ...fileData.fileInfo,
+                    ...currentSharedInfo,
+                    students: exportData,
+                    logo: currentCroppedLogo ? 'logo' : undefined,
+                };
+                
+                doc.setData(finalData);
+
+                doc.render();
+                const output = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+                
+                return {
+                    name: `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedStudents.length}_students).docx`,
+                    blob: output
+                };
+            });
+
+        const generatedFiles = await Promise.all(generationPromises);
+
+        if (generatedFiles.length === 1) {
+            saveAs(generatedFiles[0].blob, generatedFiles[0].name);
+        } else {
+            const masterZip = new PizZip();
+            for (const file of generatedFiles) {
+                const arrayBuffer = await file.blob.arrayBuffer();
+                masterZip.file(file.name, arrayBuffer);
+            }
+            const zipBlob = masterZip.generate({ type: "blob" });
+            saveAs(zipBlob, "Generated_SF9_Documents.zip");
+        }
+
+        clearStateFromLocalStorage();
+        setIsPostGenerateDialogOpen(true);
+
+        toast({
+            variant: 'success',
+            title: 'Generation Complete',
+            description: `${generatedFiles.length} document(s) have been generated.`,
+        });
+
+    } catch (error: any) {
+        console.error("Error generating SF9:", error);
+        toast({
+            variant: "destructive",
+            title: "Generation Failed",
+            description: error.message || "An unexpected error occurred.",
+        });
+    } finally {
+        setIsProcessing(false);
+    }
+}, [toast]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const processPayment = async () => {
+      const currentSearchParams = new URLSearchParams(window.location.search);
+      const paymentStatus = currentSearchParams.get('payment_status');
+
+      if (!paymentStatus) return;
+      
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      if (paymentStatus === 'success') {
+          const restoredState = loadStateFromLocalStorage();
+          if (restoredState) {
+              toast({
+                  variant: 'success',
+                  title: "Payment Successful!",
+                  description: "Your file(s) are being generated...",
+              });
+              await handleGenerateSF9(restoredState, false); // isPromo is false for regular payment
+          } else {
+              toast({
+                  variant: 'destructive',
+                  title: "Generation Failed",
+                  description: "Could not retrieve session data after payment. Please try generating again.",
+              });
+          }
+      } else if (paymentStatus === 'cancelled') {
+           toast({
+              variant: "destructive",
+              title: "Payment Cancelled",
+              description: "The payment process was cancelled. You can try again.",
+           });
+           clearStateFromLocalStorage();
+      }
+    };
+
+    processPayment();
+  }, [handleGenerateSF9, loadStateFromLocalStorage, toast]);
+
+
+  const fetchTemplates = useCallback(async () => {
+      const repoConfig = paperSizeRepos[paperSize];
+      
+      setSelectedTemplateUrls({});
+      setTemplates([]);
+
+      if (!repoConfig) {
+        toast({
+          variant: "destructive",
+          title: "Under Development",
+          description: `Template repository for ${paperSize} paper size is not yet available.`,
+        });
+        return;
+      }
+      
+      setIsTemplatesLoading(true);
+      try {
+        const response = await fetch(`/api/fetch-templates?repo=${repoConfig.repo}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch templates from server.');
+        }
+        
+        const files: TemplateFile[] = await response.json();
+        const docxFiles = files.filter(file => file.name.endsWith('.docx'));
+
+        const availableMasterFiles = masterTemplateOrder.map(masterName => {
+          return docxFiles.find(file => file.name === masterName);
+        }).filter((file): file is TemplateFile => !!file);
+        
+        setTemplates(availableMasterFiles);
+      } catch (error: any) {
+        console.error("Error fetching templates:", error);
+        toast({
+            variant: "destructive",
+            title: "Could Not Load Templates",
+            description: error.message || "Please check your connection and try again.",
+            action: <Button variant="outline" size="sm" onClick={fetchTemplates}>Retry</Button>,
+        });
+      } finally {
+        setIsTemplatesLoading(false);
+      }
+    }, [paperSize, toast]);
+
+    useEffect(() => {
+        fetchTemplates();
+    }, [fetchTemplates]);
+
+  const autoSelectTemplates = useCallback((processedFiles: FileData[]) => {
+      if (templates.length === 0) return;
+
+      const newSelectedUrls: { [gradeLevel: string]: string } = {};
+      let updated = false;
+
+      processedFiles.forEach(fileData => {
+          const gradeLevel = fileData.fileInfo.gradeLevel;
+          if (!newSelectedUrls[gradeLevel]) {
+              const templateNameToFind = gradeToTemplateMap[gradeLevel];
+              if (templateNameToFind) {
+                  const matchedTemplate = templates.find(t => t.name === templateNameToFind);
+                  if (matchedTemplate) {
+                      newSelectedUrls[gradeLevel] = matchedTemplate.download_url;
+                      updated = true;
+                  }
+              }
+          }
+      });
+
+      if (updated) {
+          setSelectedTemplateUrls(prev => ({ ...prev, ...newSelectedUrls }));
+      }
+  }, [templates]);
+
+
+  const toProperCase = (str: string) => {
+    if (!str) return '';
+    return str.replace(/\w\S*/g, (txt) => {
+      if (/^[IVXLCDM]+$/i.test(txt)) {
+        return txt.toUpperCase();
+      }
+      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    });
+  };
+
+  const expandSchoolName = (rawName: string): string => {
+    if (!rawName) return '';
+    let cleaned = rawName.toUpperCase().replace(/\s{2,}/g, ' ').trim();
+
+    cleaned = cleaned.replace(/\bE\.?S\.?\b/gi, 'ELEMENTARY SCHOOL');
+    cleaned = cleaned.replace(/\bN\.?H\.?S\.?\b/gi, 'NATIONAL HIGH SCHOOL');
+    cleaned = cleaned.replace(/\bI\.?S\.?\b/gi, 'INTEGRATED SCHOOL');
+    cleaned = cleaned.replace(/\bC\.?S\.?\b/gi, 'CENTRAL SCHOOL');
+
+    return cleaned.replace(/\s{2,}/g, ' ').trim();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFiles = Array.from(e.target.files || []);
+    if (newFiles.length === 0) return;
+
+    setPendingFiles(prev => {
+        const existingFileNames = new Set(prev.map(f => f.name));
+        const uniqueNewFiles = newFiles.filter(f => !existingFileNames.has(f.name));
+        return [...prev, ...uniqueNewFiles];
+    });
+    e.target.value = '';
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-primary', 'bg-primary/10');
+      const newFiles = Array.from(e.dataTransfer.files || []);
+      if (newFiles.length === 0) return;
+
+      setPendingFiles(prev => {
+          const existingFileNames = new Set(prev.map(f => f.name));
+          const uniqueNewFiles = newFiles.filter(f => !existingFileNames.has(f.name));
+          return [...prev, ...uniqueNewFiles];
+      });
+  };
+  
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.add('border-primary', 'bg-primary/10');
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-primary', 'bg-primary/10');
+  };
+
+  const removePendingFile = (fileName: string) => {
+      setPendingFiles(prev => prev.filter(f => f.name !== fileName));
+  };
+  
+const formatPolishedName = (name: string): string => {
+    const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
+
+    let cleanedName = name.trim().toUpperCase()
+        .replace(/,/g, ", ")
+        .replace(/\s+/g, ' ')
+        .replace(/ , /g, ", ")
+        .replace(/, -/g, '')
+        .replace(/Ñ/g, 'Ñ');
+
+    const parts = cleanedName.split(", ").filter(p => p && p.trim() !== '');
+
+    if (parts.length === 3) {
+        const lastName = parts[0];
+        const firstName = parts[1];
+        let thirdPart = parts[2];
+        let foundSuffix = "";
+        let middleName = "";
+
+        for (const suffix of SUFFIX_LIST) {
+            if (thirdPart.startsWith(suffix + " ") || thirdPart === suffix) {
+                foundSuffix = suffix;
+                middleName = thirdPart.substring(suffix.length).trim();
+                break;
+            }
+        }
+        
+        if (foundSuffix) {
+            let finalName = `${lastName}, ${firstName} ${foundSuffix}`;
+            if (middleName) {
+                finalName += `, ${middleName}`;
+            }
+            return finalName;
+        }
+    } else if (parts.length === 4) {
+        const lastName = parts[0];
+        const firstName = parts[1];
+        const possibleSuffix = parts[2];
+        const middleName = parts[3];
+
+        if (SUFFIX_LIST.includes(possibleSuffix)) {
+            return `${lastName}, ${firstName} ${possibleSuffix}, ${middleName}`;
+        }
+    }
+    
+    return parts.join(", ");
+};
+
+
+  const processFiles = async () => {
+    if (pendingFiles.length === 0) return;
+    
+    setLoadingMessage(`Processing ${pendingFiles.length} file(s)...`);
+    setIsProcessing(true);
+    
+    const processedFiles: FileData[] = [];
+    let fileSpecificInfoSet = false;
+
+    for (const file of pendingFiles) {
+        try {
+            const fileData = await processSingleFile(file);
+            processedFiles.push(fileData);
+
+            if (!fileSpecificInfoSet && processedFiles.length > 0) {
+              const firstFile = processedFiles[0];
+              // Set shared info based on the first successfully processed file
+              setSharedInfo(prev => ({
+                ...prev,
+                district: firstFile.fileInfo.district || prev.district,
+                division: firstFile.fileInfo.division || prev.division,
+                region: firstFile.fileInfo.region || prev.region,
+                school: firstFile.fileInfo.school || prev.school,
+                address: firstFile.fileInfo.address || prev.address
+              }));
+              fileSpecificInfoSet = true;
+            }
+
+        } catch (error) {
+            console.error(`Error processing file ${file.name}:`, error);
+            toast({
+                variant: "destructive",
+                title: `Error Processing ${file.name}`,
+                description: "Please ensure it's a valid School Form 1 Excel file.",
+            });
+        }
+    }
+
+    setFilesData(processedFiles);
+    setOpenAccordions(processedFiles.map(f => f.id));
+    
+    if(processedFiles.length > 0) {
+      setPendingFiles([]);
+      setStep(2);
+      toast({
+          variant: 'success',
+          title: "Files Processed Successfully",
+          description: `${processedFiles.length} file(s) extracted.`,
+      });
+      autoSelectTemplates(processedFiles);
+    }
+    
+    setIsProcessing(false);
+  };
+
+  const processSingleFile = (file: File): Promise<FileData> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = new Uint8Array(event.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+                
+                const getCellValue = (row: number, col: number) => json[row]?.[col] || '';
+                
+                let gradeLevel = '';
+                const gradeValue = String(getCellValue(3, 30)).replace(/Grade /i, '').trim();
+
+                if (!gradeValue) {
+                  gradeLevel = 'Kinder';
+                } else {
+                    gradeLevel = gradeValue;
+                }
+                
+                const gradeMap: { [key: string]: string } = {
+                  '1': 'One', '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five', '6': 'Six',
+                  '7': 'Seven', '8': 'Eight', '9': 'Nine', '10': 'Ten', '11': 'Eleven', '12': 'Twelve'
+                };
+
+                if (gradeMap[gradeLevel]) {
+                  gradeLevel = gradeMap[gradeLevel];
+                }
+
+                let adviser = '';
+                for (let i = 0; i < json.length; i++) {
+                    if (String(json[i][30]).includes('Prepared by;')) {
+                        adviser = formatName(String(json[i+1]?.[30] || ''));
+                        break;
+                    }
+                }
+
+                let startIndex = -1;
+                for(let i=0; i<json.length; i++) {
+                    if(json[i][0] && typeof(json[i][0]) === 'string' && json[i][0].toLowerCase().includes('lrn')){
+                        startIndex = i + 1;
+                        break;
+                    }
+                }
+                if (startIndex === -1) { startIndex = 6; }
+
+                let endIndex = json.length;
+                for (let i = startIndex; i < json.length; i++) {
+                  if (json[i].some(cell => typeof cell === 'string' && cell.toLowerCase().includes('<=== total female'))) {
+                    endIndex = i;
+                    break;
+                  }
+                }
+                
+                const extractedData: StudentRecord[] = [];
+                for (let i = startIndex; i < endIndex; i++) {
+                  const row = json[i];
+                  if (!row[0] || !row[2]) continue;
+                  
+                  if (
+                    (typeof row[1] === 'string' && row[1].toLowerCase().includes('<=== total male')) ||
+                    (typeof row[2] === 'string' && row[2].toLowerCase().includes('<=== total male'))
+                  ) {
+                    continue;
+                  }
+
+                  const rawName = String(row[2] || '');
+                  const ageValue = Math.floor(Number(row[9] || 0));
+                  const barangay = String(row[17] || '').replace(/\s*\(\s*Pob\.\s*\)/i, '').toUpperCase();
+
+                  extractedData.push({
+                    LRN: String(row[0]).split('.')[0],
+                    Name: formatPolishedName(rawName),
+                    Sex: String(row[6] || '').toUpperCase() === 'M' ? 'Male' : 'Female',
+                    Birthdate: row[7] || '',
+                    Age: isNaN(ageValue) ? 0 : ageValue,
+                    Barangay: barangay,
+                    Municipality: String(row[20] || '').toUpperCase(),
+                    Province: String(row[22] || '').toUpperCase(),
+                  });
+                }
+                
+                const municipalities = extractedData.map(d => d.Municipality).filter(Boolean);
+                const municipalityCounts = municipalities.reduce((acc, mun) => {
+                  acc[mun] = (acc[mun] || 0) + 1;
+                  return acc;
+                }, {} as { [key: string]: number });
+                
+                let mostCommonMunicipality = '';
+                if (Object.keys(municipalityCounts).length > 0) {
+                    mostCommonMunicipality = Object.keys(municipalityCounts).reduce((a, b) => 
+                        municipalityCounts[a] > municipalityCounts[b] ? a : b
+                    );
+                }
+
+                let parsedDistrict = String(getCellValue(2, 38) || getCellValue(3, 38) || '').trim();
+                if (!parsedDistrict) {
+                    for (let r = 1; r <= 4; r++) {
+                        for (let c = 35; c < 42; c++) {
+                            const val = String(getCellValue(r, c) || '').trim();
+                            if (val && !val.toLowerCase().includes('prepared') && !val.toLowerCase().includes('section')) {
+                                parsedDistrict = val;
+                                break;
+                            }
+                        }
+                        if (parsedDistrict) break;
+                    }
+                }
+
+                if (parsedDistrict.toLowerCase().startsWith('district')) {
+                    parsedDistrict = parsedDistrict.replace(/^district\s*[:\s-]*\s*/i, '').trim();
+                }
+                parsedDistrict = toProperCase(parsedDistrict);
+
+                // Division from cell T3 (column 19)
+                let parsedDivision = String(getCellValue(2, 19) || getCellValue(3, 19) || '').trim();
+                if (!parsedDivision) {
+                    for (let r = 1; r <= 4; r++) {
+                        for (let c = 17; c <= 23; c++) {
+                            const val = String(getCellValue(r, c) || '').trim();
+                            if (val && !val.toLowerCase().includes('division') && !val.toLowerCase().includes('school') && !val.toLowerCase().includes('region')) {
+                                parsedDivision = val;
+                                break;
+                            }
+                        }
+                        if (parsedDivision) break;
+                    }
+                }
+                if (parsedDivision.toLowerCase().startsWith('division')) {
+                    parsedDivision = parsedDivision.replace(/^(division\s+of\s+|division\s*[:\s-]*\s*)/i, '').trim();
+                }
+                parsedDivision = parsedDivision.toUpperCase();
+
+                // Region from cell K3 (column 10)
+                let parsedRegion = String(getCellValue(2, 10) || getCellValue(3, 10) || '').trim();
+                if (!parsedRegion) {
+                    for (let r = 1; r <= 4; r++) {
+                        for (let c = 8; c <= 12; c++) {
+                            const val = String(getCellValue(r, c) || '').trim();
+                            if (val && (val.toLowerCase().includes('region') || val.toLowerCase().includes('ncr') || val.toLowerCase().includes('car') || val.toLowerCase().includes('barmm'))) {
+                                parsedRegion = val;
+                                break;
+                            }
+                        }
+                        if (parsedRegion) break;
+                    }
+                }
+                if (parsedRegion) {
+                    const matchedRegion = regions.find(r => r.toLowerCase() === parsedRegion.toLowerCase() || parsedRegion.toLowerCase().includes(r.toLowerCase()));
+                    if (matchedRegion) {
+                        parsedRegion = matchedRegion;
+                    }
+                }
+
+                // School Name from cell (3, 5) or (2, 5) and expand abbreviations
+                const rawSchoolName = String(getCellValue(3, 5) || getCellValue(2, 5) || '').trim();
+                const parsedSchool = expandSchoolName(rawSchoolName);
+
+                resolve({
+                    id: file.name,
+                    fileName: file.name,
+                    studentData: extractedData,
+                    fileInfo: {
+                        gradeLevel: gradeLevel,
+                        section: toProperCase(String(getCellValue(3, 38))),
+                        adviser: adviser,
+                        school: parsedSchool,
+                        district: parsedDistrict,
+                        division: parsedDivision,
+                        region: parsedRegion,
+                        address: toProperCase(mostCommonMunicipality),
+                    },
+                    selectedRows: new Set(extractedData.map(s => s.LRN)),
+                    searchTerm: '',
+                });
+
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsArrayBuffer(file);
+    });
+  };
+  
+
+  const handlePaymentAndGenerate = async () => {
+    const totalSelected = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+
+    if (totalSelected === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No Students Selected',
+        description: 'Please select at least one student to generate a document.',
+      });
+      setIsPurchaseConfirmationOpen(false);
+      return;
+    }
+    
+    if (isSF9ActionDisabled) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing Information',
+        description: 'Please select a template for each grade level, and fill all required shared info fields.',
+      });
+      setIsPurchaseConfirmationOpen(false);
+      return;
+    }
+    updatePreviousInfo();
+
+    const generationState: AppState = {
+      filesData,
+      sharedInfo,
+      croppedLogo,
+      selectedTemplateUrls,
+      useMiddleInitial,
+    };
+    
+    setLoadingMessage('Processing your request...');
+    setIsProcessing(true);
+    
+    try {
+        if (isPromoApplied) {
+            toast({
+                title: "Developer Pass Applied",
+                description: "Bypassing payment and generating file(s)...",
+                variant: "success",
+            });
+            setIsPurchaseConfirmationOpen(false);
+            await handleGenerateSF9(generationState, true); // isPromo is true
+            return;
+        }
+
+        saveStateToLocalStorage();
+
+        const response = await fetch('/api/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentCount: totalSelected }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to create payment session.');
+        }
+
+        const { url } = await response.json();
+        if (url) {
+            setCheckoutUrl(url);
+            setIsPurchaseConfirmationOpen(false);
+            setIsCheckoutDialogOpen(true);
+
+            try {
+                const win = window.open(url, '_blank');
+                if (win) {
+                    win.focus();
+                }
+            } catch (err) {
+                console.error('Failed to auto-open popup:', err);
+            }
+            return; 
+        } else {
+            throw new Error('Checkout URL not provided.');
+        }
+        
+    } catch (error: any) {
+      console.error('Generation or Payment failed:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Could not complete the process.',
+      });
+      clearStateFromLocalStorage();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+
+  const handleApplyPromoCode = () => {
+    if (promoCode.trim().toUpperCase() === DEV_PROMO_CODE) {
+      setIsPromoApplied(true);
+      toast({
+        variant: "success",
+        title: "Developer Pass Applied!",
+        description: "You can now generate the file for free.",
+      });
+    } else {
+      setIsPromoApplied(false);
+      toast({
+        variant: "destructive",
+        title: "Invalid Promo Code",
+        description: "The code you entered is not valid.",
+      });
+    }
+  };
+
+  const formatName = (name: string): string => {
+    if (!name) return '';
+    let cleanedName = name.trim().replace(/\s+/g, ' ');
+
+    if (cleanedName.includes(',')) {
+      const parts = cleanedName.split(',');
+      const lastName = parts[0].trim();
+      const firstAndMiddle = parts.slice(1).join(' ').trim();
+      cleanedName = `${firstAndMiddle} ${lastName}`;
+    }
+
+    const nameParts = cleanedName.split(' ').map(p => p.trim()).filter(Boolean);
+    
+    let deIndex = -1;
+    for (let i = 0; i < nameParts.length; i++) {
+        if (nameParts[i].toLowerCase() === 'de') {
+            const posFromEnd = nameParts.length - 1 - i;
+            if (posFromEnd === 2 || posFromEnd === 3) {
+                deIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (deIndex !== -1) {
+        nameParts.splice(deIndex, 2, `${nameParts[deIndex]} ${nameParts[deIndex + 1]}`);
+    }
+
+
+    const complexLastNameMarkers = ["del", "dela", "de la", "delos", "de los", "de"];
+    
+    let processedParts: string[] = [];
+    let i = 0;
+    while (i < nameParts.length) {
+        let currentPart = nameParts[i];
+        let nextPart = nameParts[i+1];
+
+        if (complexLastNameMarkers.includes(currentPart.toLowerCase()) && nextPart) {
+            processedParts.push(`${currentPart} ${nextPart}`);
+            i += 2;
+        } 
+        else if (currentPart.includes('-') && i > 0) {
+            let lastProcessed = processedParts.pop();
+            if (lastProcessed) {
+              processedParts.push(`${lastProcessed}-${currentPart}`);
+            } else {
+              processedParts.push(currentPart);
+            }
+            i++;
+        }
+        else {
+            processedParts.push(currentPart);
+            i++;
+        }
+    }
+
+    let firstName = '';
+    let middleInitial = '';
+    let lastName = '';
+    
+    const numParts = processedParts.length;
+
+    if (numParts === 2) {
+        firstName = processedParts[0];
+        lastName = processedParts[1];
+    } else if (numParts === 3) {
+        firstName = processedParts[0];
+        middleInitial = processedParts[1].charAt(0).toUpperCase() + '.';
+        lastName = processedParts[2];
+    } else if (numParts === 4) {
+        const deInMiddle = processedParts[1].toLowerCase().startsWith('de ');
+        if (deInMiddle) {
+            firstName = processedParts[0];
+            middleInitial = `${processedParts[1].charAt(0).toUpperCase()}.`;
+            lastName = processedParts[2] + ' ' + processedParts[3];
+
+        } else {
+            firstName = `${processedParts[0]} ${processedParts[1]}`;
+            middleInitial = processedParts[2].charAt(0).toUpperCase() + '.';
+            lastName = processedParts[3];
+        }
+    } else if (numParts === 5) {
+        firstName = `${processedParts[0]} ${processedParts[1]} ${processedParts[2]}`;
+        middleInitial = processedParts[3].charAt(0).toUpperCase() + '.';
+        lastName = processedParts[4];
+    } else if (numParts === 6) {
+        firstName = `${processedParts[0]} ${processedParts[1]} ${processedParts[2]} ${processedParts[3]}`;
+        middleInitial = processedParts[4].charAt(0).toUpperCase() + '.';
+        lastName = processedParts[5];
+    } else {
+        return toProperCase(cleanedName).toUpperCase();
+    }
+
+    const finalName = [firstName, middleInitial, lastName].filter(Boolean).join(' ');
+    return toProperCase(finalName).toUpperCase();
+  };
+
+  const resetState = () => {
+    setStep(1);
+    setIsProcessing(false);
+    setPendingFiles([]);
+    setFilesData([]);
+    setOpenAccordions([]);
+    setSharedInfo(initialSharedInfo);
+    setCroppedLogo(null);
+    setLogoSrc(null);
+    setSelectedTemplateUrls({});
+    setPaperSize('Custom');
+    setPromoCode('');
+    setIsPromoApplied(false);
+  };
+
+  const handleRowSelection = (fileId: string, lrn: string) => {
+    setFilesData(prev => prev.map(fileData => {
+        if (fileData.id === fileId) {
+            const newSelection = new Set(fileData.selectedRows);
+            if (newSelection.has(lrn)) {
+                newSelection.delete(lrn);
+            } else {
+                newSelection.add(lrn);
+            }
+            return { ...fileData, selectedRows: newSelection };
+        }
+        return fileData;
+    }));
+  };
+
+  const handleSelectAll = (fileId: string, filteredData: StudentRecord[]) => {
+      setFilesData(prev => prev.map(fileData => {
+          if (fileData.id === fileId) {
+              const currentSelectionSize = fileData.selectedRows.size;
+              const filteredIds = new Set(filteredData.map(d => d.LRN));
+              
+              if (currentSelectionSize === filteredIds.size) {
+                  return { ...fileData, selectedRows: new Set() };
+              } else {
+                  return { ...fileData, selectedRows: filteredIds };
+              }
+          }
+          return fileData;
+      }));
+  };
+
+  const handleSearchTermChange = (fileId: string, term: string) => {
+      setFilesData(prev => prev.map(fileData => 
+          fileData.id === fileId ? { ...fileData, searchTerm: term } : fileData
+      ));
+  };
+
+
+  const handleSharedInfoChange = (field: keyof SharedInfo, value: string) => {
+    setSharedInfo(prevInfo => ({ ...prevInfo, [field]: value }));
+  };
+
+  const handleFileInfoChange = (fileId: string, field: keyof FileInfo, value: string) => {
+      setFilesData(prev => prev.map(fileData => 
+          fileData.id === fileId ? { ...fileData, fileInfo: { ...fileData.fileInfo, [field]: value } } : fileData
+      ));
+  };
+
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setCrop(undefined) // Makes crop preview update between images.
+      const reader = new FileReader();
+      reader.addEventListener('load', () =>
+        setLogoSrc(reader.result?.toString() || ''),
+      );
+      reader.readAsDataURL(e.target.files[0]);
+      setIsEditorOpen(true);
+      e.target.value = '';
+    }
+  };
+
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    setCrop(centerAspectCrop(width, height, 1));
+  }
+  
+  const handleSaveCrop = () => {
+    const image = imgRef.current;
+    if (!image || !completedCrop) {
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    
+    canvas.width = completedCrop.width;
+    canvas.height = completedCrop.height;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('No 2d context');
+    }
+
+    const pixelRatio = window.devicePixelRatio;
+    canvas.width = completedCrop.width * pixelRatio;
+    canvas.height = completedCrop.height * pixelRatio;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
+
+    ctx.drawImage(
+      image,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
+      0,
+      0,
+      completedCrop.width,
+      completedCrop.height
+    );
+    
+    const newLogo = canvas.toDataURL('image/png');
+    setCroppedLogo(newLogo);
+    setIsEditorOpen(false);
+
+    setPreviousLogos(prev => {
+        const updatedLogos = [newLogo, ...prev.filter(p => p !== newLogo)].slice(0, MAX_PREVIOUS_LOGOS);
+        try {
+            sessionStorage.setItem('previousSchoolLogos', JSON.stringify(updatedLogos));
+        } catch (error) {
+            console.error("Could not save logos to sessionStorage:", error);
+        }
+        return updatedLogos;
+    });
+  };
+
+  const handleRemovePreviousLogo = (logoToRemove: string) => {
+    setPreviousLogos(prev => {
+        const updatedLogos = prev.filter(p => p !== logoToRemove);
+        try {
+            sessionStorage.setItem('previousSchoolLogos', JSON.stringify(updatedLogos));
+        } catch (error) {
+            console.error("Could not update logos in sessionStorage:", error);
+        }
+        return updatedLogos;
+    });
+  };
+
+  const handleRemoveCurrentLogo = () => {
+    const logoToRemove = croppedLogo;
+    setCroppedLogo(null);
+    if(logoToRemove){
+        handleRemovePreviousLogo(logoToRemove);
+    }
+  }
+
+  const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
+  const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+  
+  const rawTotal = totalSelectedStudents * 2.5;
+  let autoDiscountPercent = 0;
+  if (rawTotal > 250) {
+    autoDiscountPercent = 10;
+  } else if (rawTotal > 100) {
+    autoDiscountPercent = 5;
+  }
+  const autoDiscountAmount = rawTotal * (autoDiscountPercent / 100);
+  const subtotalAfterDiscount = rawTotal - autoDiscountAmount;
+  const isUnderMinimum = subtotalAfterDiscount < 20;
+  const finalAmountToPay = isUnderMinimum ? 20 : subtotalAfterDiscount;
+  
+  const isActionDisabled = isProcessing || totalSelectedStudents === 0 || 
+    !sharedInfo.school ||
+    !sharedInfo.schoolHead || 
+    !sharedInfo.schoolHeadDesignation ||
+    !sharedInfo.region ||
+    !sharedInfo.division ||
+    !sharedInfo.district ||
+    !sharedInfo.schoolYear;
+
+  const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
+  const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected;
+
+  const handleGenerateAnother = () => {
+    resetState();
+    setIsPostGenerateDialogOpen(false);
+  };
+
+  const SummaryItem = ({ label, value }: { label: string; value?: string | number | ReactNode }) => (
+    <div className="flex justify-between py-2 border-b border-dashed">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium text-right">{value || 'Not set'}</dd>
+    </div>
+  );
+
+
+  return (
+    <TooltipProvider>
+      {hasMounted && <AppHeader />}
+      <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
+        {isProcessing && <LoadingOverlay message={loadingMessage} />}
+        
+        <AlertDialog open={isDisclaimerOpen} onOpenChange={setIsDisclaimerOpen}>
+            <AlertDialogContent className="max-w-3xl">
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Important Disclaimer & Terms of Use</AlertDialogTitle>
+                </AlertDialogHeader>
+                <ScrollArea className="max-h-[60vh] pr-6">
+                    <div className="space-y-4 text-sm text-muted-foreground">
+                        <p>Please read this disclaimer carefully before using the SF9 Maker (the "Service").</p>
+                        <p>By clicking "Agree" or by using this Service, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined below.</p>
+                        
+                        <h3 className="font-semibold text-foreground">1. No Official Affiliation</h3>
+                        <p>This is an unofficial, third-party tool. It is NOT affiliated with, endorsed by, or created by the Department of Education (DepEd). This Service is provided as-is for convenience and supplemental use only.</p>
+
+                        <h3 className="font-semibold text-foreground">2. Data Privacy & Security</h3>
+                        <p>We have designed this app with your privacy as the highest priority.</p>
+                        <ul className="list-disc pl-5 space-y-2">
+                            <li><span className="font-semibold">100% Client-Side Processing:</span> This app is designed to be 100% client-side. Your School Form 1 (SF1) file and all the sensitive student data it contains (names, LRNs, grades, etc.) NEVER leave your computer.</li>
+                            <li><span className="font-semibold">No Data Upload or Storage:</span> The file is read directly by your web browser, and the School Form 9 (SF9) is generated locally on your device. No student data is ever uploaded, sent to, or stored on our servers.</li>
+                            <li><span className="font-semibold">Secure Payment:</span> For payment processing, only a non-sensitive, anonymous count of students (e.g., "25") is sent to our server to calculate the price. No personal or sensitive information is ever transmitted during this process.</li>
+                        </ul>
+
+                        <h3 className="font-semibold text-foreground">3. Accuracy and Liability</h3>
+                        <ul className="list-disc pl-5 space-y-2">
+                            <li><span className="font-semibold">For Convenience Only:</span> The calculations and generated documents are for review and convenience purposes only.</li>
+                            <li><span className="font-semibold">Verification is Your Responsibility:</span> You, the user, are solely responsible for manually verifying the accuracy of all generated data (names, grades, calculations, etc.) against official school records and the Learner Information System (LIS) before any official use.</li>
+                            <li><span className="font-semibold">No Warranty:</span> This Service is provided "as is" and "as available" without any warranties, express or implied. The developer does not guarantee that the Service will be error-free or that the generated documents will be 100% accurate or compliant with the latest DepEd orders. DepEd policies and form requirements can change at any time.</li>
+                            <li><span className="font-semibold">Limitation of Liability:</span> The developer shall not be held liable for any damages (direct, indirect, or consequential) arising from the use or inability to use this Service. This includes, but is not to be limited to, damages from inaccurate calculations, file generation errors, or any reliance on this tool for official submissions.</li>
+                        </ul>
+
+                        <h3 className="font-semibold text-foreground">4. Payments and Refunds</h3>
+                        <p>Payment is for the one-time computational service of generating the file(s). Due to the nature of this digital service and the fact that we do not store your files or data, all transactions are final and non-refundable.</p>
+
+                        <p className="font-bold">By using this app, you agree to these terms and accept full responsibility for the use and verification of all generated data.</p>
+                    </div>
+                </ScrollArea>
+                <AlertDialogFooter>
+                    <AlertDialogAction onClick={handleAgreeToDisclaimer}>
+                        I Have Read and Agree to the Terms
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Crop School Logo</DialogTitle>
+            </DialogHeader>
+            {logoSrc && (
+              <div className='flex justify-center'>
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                onComplete={(c) => setCompletedCrop(c)}
+                aspect={1}
+                minWidth={100}
+                minHeight={100}
+              >
+                <Image
+                  ref={imgRef}
+                  alt="Crop me"
+                  src={logoSrc}
+                  width={400}
+                  height={400}
+                  onLoad={onImageLoad}
+                  className="max-h-[60vh] object-contain"
+                />
+              </ReactCrop>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditorOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveCrop}>Save Logo</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        
+        <Dialog open={isPostGenerateDialogOpen} onOpenChange={setIsPostGenerateDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-center">Generation Successful!</DialogTitle>
+                <DialogDescription className="text-center">
+                  Your document(s) have been downloaded.
+                  <br />
+                  What would you like to do next?
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex-col sm:flex-col sm:space-x-0 items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={handleGenerateAnother}
+                  className="w-full"
+                >
+                  Generate Another
+                </Button>
+                <a
+                  href="https://forms.gle/2pDLGjWxooM6X6dv5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
+                  onClick={() => setIsPostGenerateDialogOpen(false)}
+                >
+                  <MessageSquareQuote className="mr-2 h-4 w-4" />
+                  Leave a Suggestion
+                </a>
+              </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+         <AlertDialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+          <AlertDialogContent className="max-w-2xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Please Review Your Entries</AlertDialogTitle>
+              <AlertDialogDescription>
+                Double-check the information below before proceeding.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <ScrollArea className="max-h-[60vh] pr-6">
+              <dl className="space-y-1">
+                <SummaryItem label="Total Files" value={filesData.length} />
+                <SummaryItem label="Total Selected Students" value={totalSelectedStudents} />
+                <SummaryItem label="Paper Size" value={paperSize} />
+                <SummaryItem label="School Name" value={sharedInfo.school} />
+                <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
+                <SummaryItem label="School Head Designation" value={sharedInfo.schoolHeadDesignation} />
+                <SummaryItem label="Region" value={sharedInfo.region} />
+                <SummaryItem label="Division" value={sharedInfo.division} />
+                <SummaryItem label="District" value={sharedInfo.district} />
+                <SummaryItem label="School Year" value={sharedInfo.schoolYear} />
+                <SummaryItem label="School Logo" value={croppedLogo ? "Included" : "Not Included"} />
+                <div className="pt-4">
+                  <h4 className="font-semibold text-foreground mb-2">Templates by Grade Level</h4>
+                  {uniqueGradeLevels.map(grade => {
+                    const templateName = templates.find(t => t.download_url === selectedTemplateUrls[grade])?.name;
+                    const value = templateName ? (
+                      <span className="text-green-600">{templateName}</span>
+                    ) : (
+                      <span className="text-destructive font-medium">Not Selected</span>
+                    );
+                    return <SummaryItem key={grade} label={`Grade ${grade}`} value={value} />
+                  })}
+                </div>
+              </dl>
+            </ScrollArea>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setIsSummaryDialogOpen(false); setIsPurchaseConfirmationOpen(true); }}>
+                Confirm & Proceed
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={isPurchaseConfirmationOpen} onOpenChange={setIsPurchaseConfirmationOpen}>
+            <AlertDialogContent className="sm:max-w-lg">
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm Purchase</AlertDialogTitle>
+                    {isPromoApplied ? (
+                      <AlertDialogDescription>
+                        Developer pass applied. You can generate the file(s) for free.
+                      </AlertDialogDescription>
+                    ) : (
+                      <div className="space-y-3 pt-1">
+                        <AlertDialogDescription>
+                          Review your order summary before proceeding to payment.
+                        </AlertDialogDescription>
+                        
+                        <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+                          <div className="flex justify-between items-center text-muted-foreground">
+                            <span>Selected Students:</span>
+                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) × ₱2.50</span>
+                          </div>
+                          <div className="flex justify-between items-center text-muted-foreground">
+                            <span>Base Rate Total:</span>
+                            <span className="font-medium text-foreground">₱{rawTotal.toFixed(2)}</span>
+                          </div>
+
+                          {autoDiscountPercent > 0 && (
+                            <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="flex items-center gap-1">
+                                <Tag className="size-3" />
+                                {autoDiscountPercent}% Volume Discount:
+                              </span>
+                              <span>-₱{autoDiscountAmount.toFixed(2)}</span>
+                            </div>
+                          )}
+
+                          {autoDiscountPercent > 0 && (
+                            <div className="flex justify-between items-center text-muted-foreground pt-1 border-t">
+                              <span>Subtotal after discount:</span>
+                              <span className="font-medium text-foreground">₱{subtotalAfterDiscount.toFixed(2)}</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-center pt-2 border-t font-semibold text-sm text-foreground">
+                            <span>Total Payable Amount:</span>
+                            <span className="text-primary text-base">₱{finalAmountToPay.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                </AlertDialogHeader>
+
+                {!isPromoApplied && (
+                    <div className="space-y-3">
+                        {isUnderMinimum && (
+                            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200 space-y-1 text-xs">
+                                <div className="flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
+                                    <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                    <span>Minimum Amount Notice</span>
+                                </div>
+                                <p className="text-[11px] leading-relaxed opacity-90">
+                                    The minimum total amount per generation is <strong>₱20.00</strong>. Since your calculated total is <strong>₱{subtotalAfterDiscount.toFixed(2)}</strong>, a minimum charge of <strong>₱20.00</strong> will be applied at checkout.
+                                </p>
+                            </div>
+                        )}
+
+                        {autoDiscountPercent > 0 ? (
+                            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                                <Tag className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                <span>
+                                    <strong>{autoDiscountPercent}% Bulk Discount Applied!</strong> ({rawTotal > 250 ? 'Order exceeds ₱250.00' : 'Order between ₱100.00 and ₱250.00'}).
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
+                                <Percent className="size-3.5 shrink-0 text-primary" />
+                                <span>
+                                    <strong>Bulk Promo Discount:</strong> Save <strong>5%</strong> on orders over ₱100.00, and <strong>10%</strong> on orders over ₱250.00!
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="space-y-3 pt-1">
+                    <Label htmlFor="promo-code" className="text-xs font-semibold">Use Custom Promo Code</Label>
+                    <div className="flex gap-2">
+                        <Input 
+                          id="promo-code" 
+                          placeholder="Enter promo code" 
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value)}
+                          disabled={isPromoApplied}
+                          className="h-9 text-xs"
+                        />
+                        <Button 
+                          onClick={handleApplyPromoCode}
+                          disabled={isPromoApplied || !promoCode} 
+                          variant="outline"
+                          size="sm"
+                        >
+                            Apply Code
+                        </Button>
+                    </div>
+                </div>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePaymentAndGenerate}>
+                      {isPromoApplied ? 'Generate for Free' : 'Proceed to Payment'}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog open={isCheckoutDialogOpen} onOpenChange={setIsCheckoutDialogOpen}>
+            <DialogContent className="sm:max-w-md text-center space-y-4">
+                <DialogHeader>
+                    <DialogTitle className="text-center text-xl">Complete Your Payment</DialogTitle>
+                    <DialogDescription className="text-center text-sm pt-2">
+                        Paymongo Checkout will open in a new tab. If your browser blocked the popup, click the button below to open the checkout page.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 flex flex-col items-center gap-3">
+                    {checkoutUrl && (
+                        <a
+                            href={checkoutUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(buttonVariants({ variant: 'default', size: 'lg' }), 'w-full gap-2 text-base font-semibold shadow-md')}
+                        >
+                            Open Paymongo Checkout Page
+                        </a>
+                    )}
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                        After completing payment on Paymongo, you will be redirected back here to automatically generate your School Form 9 document(s).
+                    </p>
+                </div>
+                <DialogFooter className="sm:justify-center">
+                    <Button variant="outline" onClick={() => setIsCheckoutDialogOpen(false)}>
+                        Close
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <div className="max-w-5xl mx-auto w-full space-y-8">
+            <div className="p-4 md:p-6 bg-card border rounded-xl">
+                 <Stepper currentStep={step} setStep={setStep} />
+            </div>
+           
+            <div className={cn(step === 1 ? 'block' : 'hidden')}>
+                 <Card className="w-full shadow-lg border-primary/20">
+                    <CardHeader>
+                        <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary">
+                            <FileUp className="size-6" />
+                        </div>
+                        <div>
+                            <CardTitle>Upload School Form 1 Files</CardTitle>
+                            <CardDescription>Select one or more SF1 files to begin.</CardDescription>
+                        </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div 
+                            className="border-2 border-dashed border-muted-foreground/30 rounded-xl p-8 text-center transition-colors duration-300 cursor-pointer bg-background hover:bg-muted"
+                            onClick={handleUploadAreaClick}
+                            onDrop={handleFileDrop}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                        >
+                            <Input
+                            id="file-upload"
+                            type="file"
+                            className="hidden"
+                            accept=".xls,.xlsx"
+                            onChange={handleFileSelect}
+                            disabled={isProcessing}
+                            ref={fileUploadRef}
+                            multiple
+                            />
+                            <label htmlFor="file-upload" className="cursor-pointer pointer-events-none">
+                                <div className="mx-auto flex items-center justify-center size-12 rounded-full bg-muted text-primary">
+                                    <Upload className="size-6" />
+                                </div>
+                                <p className="mt-4 text-primary font-semibold">
+                                    Click to browse or drag & drop
+                                </p>
+                                <p className="text-sm text-muted-foreground">XLS or XLSX files</p>
+                            </label>
+                        </div>
+
+                        {pendingFiles.length > 0 && (
+                            <div className="mt-6">
+                                <h3 className="font-semibold text-lg mb-2">Selected Files ({pendingFiles.length})</h3>
+                                <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                    {pendingFiles.map(file => (
+                                        <div key={file.name} className="flex items-center justify-between p-2 border rounded-lg bg-secondary/50">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <FileIcon className="size-5 text-muted-foreground" />
+                                                <span className="text-sm font-medium truncate">{file.name}</span>
+                                            </div>
+                                            <Button variant="ghost" size="icon" className="size-7 flex-shrink-0" onClick={() => removePendingFile(file.name)}>
+                                                <X className="size-4" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <Button 
+                                  className="w-full mt-4" 
+                                  size="lg"
+                                  onClick={processFiles}
+                                  disabled={isProcessing}
+                                >
+                                  <Files className="mr-2 size-5" />
+                                  Process {pendingFiles.length} File(s)
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+            
+            <div className={cn(step >= 2 ? 'block' : 'hidden')}>
+                <div className="flex items-center justify-between p-3 border rounded-lg bg-secondary mb-6 gap-4">
+                    <div className="flex items-center gap-3">
+                        <Package className="size-6 text-primary" />
+                        <div>
+                            <p className="font-medium">{filesData.length} file(s) processed</p>
+                            <p className="text-xs text-muted-foreground">{totalSelectedStudents} total student(s) selected</p>
+                        </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={resetState} disabled={isProcessing}>
+                        <RotateCw className="mr-2 size-4" />
+                        Start Over
+                    </Button>
+                </div>
+            </div>
+
+            <div className={cn(step === 2 ? 'block' : 'hidden')}>
+                <Card className="w-full shadow-lg border-primary/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary">
+                        <Table className="size-6" />
+                      </div>
+                      <div>
+                        <CardTitle>Preview & Select Data</CardTitle>
+                        <CardDescription>Review the data and select records for each file.</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex justify-end mb-4">
+                        <div className="flex items-center space-x-2">
+                            <Switch id="middle-initial-switch" checked={useMiddleInitial} onCheckedChange={setUseMiddleInitial} />
+                            <Label htmlFor="middle-initial-switch">Use Middle Initial in Names</Label>
+                        </div>
+                    </div>
+
+                    <Accordion type="multiple" value={openAccordions} onValueChange={setOpenAccordions} className="w-full">
+                        {filesData.map((fileData) => {
+                            const filteredStudents = fileData.studentData.filter(
+                                d =>
+                                  d.Name.toLowerCase().includes(fileData.searchTerm.toLowerCase()) ||
+                                  d.LRN.includes(fileData.searchTerm)
+                            );
+                            
+                            return (
+                            <AccordionItem value={fileData.id} key={fileData.id} className="border-b-0">
+                                <AccordionTrigger className="hover:no-underline border rounded-lg px-4 bg-muted/50 data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
+                                    <div className='flex items-center justify-between w-full'>
+                                        <div className='flex items-center gap-3'>
+                                            <FileCheck className="size-5 text-green-600" />
+                                            <div>
+                                                <p className="font-semibold text-left">{fileData.fileName}</p>
+                                                <p className="text-xs text-muted-foreground text-left">{fileData.fileInfo.gradeLevel} - {fileData.fileInfo.section} &bull; {fileData.selectedRows.size} / {fileData.studentData.length} selected</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="border rounded-lg rounded-t-none border-t-0 p-4">
+                                     <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                                        <div className="relative max-w-sm w-full">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Filter by Name or LRN..."
+                                                value={fileData.searchTerm}
+                                                onChange={(e) => handleSearchTermChange(fileData.id, e.target.value)}
+                                                className="pl-10"
+                                            />
+                                        </div>
+                                        <Button 
+                                            variant="outline"
+                                            onClick={() => handleSelectAll(fileData.id, filteredStudents)}
+                                        >
+                                           {fileData.selectedRows.size === filteredStudents.length ? 'Deselect All' : 'Select All'} ({filteredStudents.length})
+                                        </Button>
+                                    </div>
+                                    <div className="relative rounded-lg border max-h-[50vh] overflow-y-auto">
+                                      <ShadTable>
+                                        <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+                                          <TableRow>
+                                            <TableHead className="sticky left-0 z-20 w-[50px] bg-background/95 text-center">
+                                              <Checkbox
+                                                checked={
+                                                  filteredStudents.length > 0 && fileData.selectedRows.size === filteredStudents.length
+                                                }
+                                                onCheckedChange={() => handleSelectAll(fileData.id, filteredStudents)}
+                                                aria-label="Select all rows for this file"
+                                              />
+                                            </TableHead>
+                                            <TableHead className="text-center">LRN</TableHead>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead className="text-center">Sex</TableHead>
+                                            <TableHead className="text-center">Birthdate</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {filteredStudents.length > 0 ? (
+                                            filteredStudents.map((student) => (
+                                              <TableRow
+                                                key={student.LRN}
+                                                className={cn("cursor-pointer", fileData.selectedRows.has(student.LRN) && 'bg-primary/5')}
+                                                onClick={() => handleRowSelection(fileData.id, student.LRN)}
+                                              >
+                                                <TableCell className="sticky left-0 z-10 text-center group-hover:bg-muted/50" style={{background: fileData.selectedRows.has(student.LRN) ? 'hsl(var(--primary)/0.05)' : 'hsl(var(--background))'}}>
+                                                  <Checkbox
+                                                    checked={fileData.selectedRows.has(student.LRN)}
+                                                    onCheckedChange={() => handleRowSelection(fileData.id, student.LRN)}
+                                                    aria-label={`Select row for ${student.Name}`}
+                                                  />
+                                                </TableCell>
+                                                <TableCell className="font-mono text-xs text-center">{student.LRN}</TableCell>
+                                                <TableCell className="font-medium">
+                                                    {useMiddleInitial ? formatNameWithMiddleInitial(student.Name) : student.Name}
+                                                </TableCell>
+                                                <TableCell className="text-center">{student.Sex}</TableCell>
+                                                <TableCell className="text-center">{student.Birthdate}</TableCell>
+                                              </TableRow>
+                                            ))
+                                          ) : (
+                                            <TableRow>
+                                              <TableCell colSpan={6} className="h-24 text-center">
+                                                No results found for "{fileData.searchTerm}".
+                                              </TableCell>
+                                            </TableRow>
+                                          )}
+                                        </TableBody>
+                                      </ShadTable>
+                                    </div>
+                                </AccordionContent>
+                            </AccordionItem>
+                        )})}
+                    </Accordion>
+
+                    <div className="flex items-center justify-between mt-6">
+                        <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+                        <Button onClick={() => setStep(3)} disabled={totalSelectedStudents === 0}>
+                            Continue ({totalSelectedStudents}) <ChevronRight className="ml-2 size-4" />
+                        </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+            </div>
+
+            <div className={cn(step === 3 ? 'block' : 'hidden')}>
+                <Card className="shadow-lg border-primary/20">
+                    <CardHeader>
+                        <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary">
+                            <Download className="size-6" />
+                        </div>
+                        <div>
+                            <CardTitle>Finalize & Generate</CardTitle>
+                            <CardDescription>Finalize shared details and download your documents.</CardDescription>
+                        </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-8">
+                       <div>
+                          <h3 className="text-lg font-medium mb-3">Per-section Information</h3>
+                          <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser's name if needed.</p>
+                          <div className="border rounded-lg overflow-hidden">
+                            <ShadTable>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>File</TableHead>
+                                        <TableHead className="text-center">Grade Level</TableHead>
+                                        <TableHead className="text-center">Section</TableHead>
+                                        <TableHead>
+                                            <div className="flex items-center gap-1.5">
+                                              <span>Adviser</span>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top">
+                                                  <p className="text-xs">Format: First Name Middle Initial Last Name (e.g. Juan D. Cruz)</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </div>
+                                        </TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filesData.map(file => (
+                                    <TableRow key={file.id}>
+                                        <TableCell className="font-medium text-sm truncate max-w-xs">{file.fileName}</TableCell>
+                                        <TableCell className="text-center font-medium">{file.fileInfo.gradeLevel}</TableCell>
+                                        <TableCell className="text-center font-medium">{file.fileInfo.section}</TableCell>
+                                        <TableCell>
+                                            <Input value={file.fileInfo.adviser} placeholder="e.g. Juan D. Cruz" onChange={(e) => handleFileInfoChange(file.id, 'adviser', e.target.value)} />
+                                        </TableCell>
+                                    </TableRow>
+                                    ))}
+                                </TableBody>
+                            </ShadTable>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h3 className="text-lg font-medium mb-3">Shared School Information</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="md:col-span-2 space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="school">School Name</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-semibold text-xs">Formatting Requirement:</p>
+                                      <p className="text-xs">Must be in <strong>UPPERCASE</strong>. Abbreviations (ES, NHS, IS, CS) automatically expand to full names (e.g. ES &rarr; ELEMENTARY SCHOOL).</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Input id="school" value={sharedInfo.school} placeholder="e.g. SAN JOSE ELEMENTARY SCHOOL" onChange={(e) => handleSharedInfoChange('school', expandSchoolName(e.target.value))} className={cn(!sharedInfo.school && 'border-destructive')} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">UPPERCASE</span> (e.g. SAN JOSE ELEMENTARY SCHOOL)</p>
+                                <HistoryBadges items={previousInfo.school} onSelect={(value) => handleSharedInfoChange('school', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="schoolHead">School Head</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-semibold text-xs">Formatting Requirement:</p>
+                                      <p className="text-xs">Must be in <strong>UPPERCASE / ALL CAPS</strong> (e.g. JUAN DELA CRUZ).</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Input id="schoolHead" value={sharedInfo.schoolHead} placeholder="e.g. JUAN DELA CRUZ" onChange={(e) => handleSharedInfoChange('schoolHead', e.target.value.toUpperCase())} className={cn(!sharedInfo.schoolHead && 'border-destructive')} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">UPPERCASE</span> (e.g. JUAN DELA CRUZ)</p>
+                                <HistoryBadges items={previousInfo.schoolHead} onSelect={(value) => handleSharedInfoChange('schoolHead', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="schoolHeadDesignation">School Head Designation</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="text-xs">Select official DepEd position title for the School Head.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Select value={sharedInfo.schoolHeadDesignation} onValueChange={(value) => handleSharedInfoChange('schoolHeadDesignation', value)}>
+                                  <SelectTrigger id="schoolHeadDesignation" className={cn(!sharedInfo.schoolHeadDesignation && 'border-destructive')}>
+                                    <SelectValue placeholder="Select Designation (e.g. Principal I)" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-[200px]">
+                                    <SelectItem value="T-1/Teacher-in-Charge">T-1/Teacher-in-Charge</SelectItem>
+                                    <SelectItem value="T-II/Teacher-in-Charge">T-II/Teacher-in-Charge</SelectItem>
+                                    <SelectItem value="T-III/Teacher-in-Charge">T-III/Teacher-in-Charge</SelectItem>
+                                    <SelectItem value="Head Teacher I">Head Teacher I</SelectItem>
+                                    <SelectItem value="Head Teacher II">Head Teacher II</SelectItem>
+                                    <SelectItem value="Head Teacher III">Head Teacher III</SelectItem>
+                                    <SelectItem value="Head Teacher IV">Head Teacher IV</SelectItem>
+                                    <SelectItem value="Principal I">Principal I</SelectItem>
+                                    <SelectItem value="Principal II">Principal II</SelectItem>
+                                    <SelectItem value="Principal III">Principal III</SelectItem>
+                                    <SelectItem value="Principal IV">Principal IV</SelectItem>
+                                    <SelectItem value="Asst. School Principal I">Asst. School Principal I</SelectItem>
+                                    <SelectItem value="Asst. School Principal II">Asst. School Principal II</SelectItem>
+                                    <SelectItem value="Asst. School Principal III">Asst. School Principal III</SelectItem>
+                                    <SelectItem value="Asst. School Principal IV">Asst. School Principal IV</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: Select official designation</p>
+                                <HistoryBadges items={previousInfo.schoolHeadDesignation} onSelect={(value) => handleSharedInfoChange('schoolHeadDesignation', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="region">Region</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="text-xs">DepEd Administrative Region (auto-populated from SF1 K3 cell).</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Select value={sharedInfo.region} onValueChange={(value) => handleSharedInfoChange('region', value)}>
+                                  <SelectTrigger id="region" className={cn(!sharedInfo.region && 'border-destructive')}>
+                                    <SelectValue placeholder="Select Region (e.g. Region V)" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-56">
+                                    {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: DepEd Region Name (e.g. Region V)</p>
+                                <HistoryBadges items={previousInfo.region} onSelect={(value) => handleSharedInfoChange('region', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="division">Division</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-semibold text-xs">Formatting Requirement:</p>
+                                      <p className="text-xs">Must be in <strong>UPPERCASE / ALL CAPS</strong>. Auto-populated from SF1 source cell T3.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Input id="division" value={sharedInfo.division} placeholder="e.g. ALBAY" onChange={(e) => handleSharedInfoChange('division', e.target.value.toUpperCase())} className={cn(!sharedInfo.division && 'border-destructive')} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">UPPERCASE</span> (e.g. ALBAY)</p>
+                                <HistoryBadges items={previousInfo.division} onSelect={(value) => handleSharedInfoChange('division', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="district">District</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-semibold text-xs">Formatting Requirement:</p>
+                                      <p className="text-xs">Must be in <strong>Proper Case</strong> (Capitalize each word). Auto-extracted from SF1 AM3 cell.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Input id="district" value={sharedInfo.district} placeholder="e.g. Oas North" onChange={(e) => handleSharedInfoChange('district', toProperCase(e.target.value))} className={cn(!sharedInfo.district && 'border-destructive')} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">Proper Case</span> (e.g. Oas North)</p>
+                                <HistoryBadges items={previousInfo.district} onSelect={(value) => handleSharedInfoChange('district', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="schoolYear">School Year</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="text-xs">Select academic school year (e.g. 2025-2026).</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Select value={sharedInfo.schoolYear} onValueChange={(value) => handleSharedInfoChange('schoolYear', value)}>
+                                  <SelectTrigger id="schoolYear" className={cn(!sharedInfo.schoolYear && 'border-destructive')}>
+                                    <SelectValue placeholder="Select School Year (e.g. 2025-2026)" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-56">
+                                    {schoolYears.map(year => (
+                                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">YYYY-YYYY</span> (e.g. 2025-2026)</p>
+                                <HistoryBadges items={previousInfo.schoolYear} onSelect={(value) => handleSharedInfoChange('schoolYear', value)} />
+                              </div>
+                              
+                              <div className="md:col-span-2 space-y-1.5">
+                                <Label>School Logo</Label>
+                                <div className="flex items-start gap-4">
+                                  <div className="flex flex-col items-center gap-2">
+                                    <Input id="logo-upload" ref={logoInputRef} type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                    {croppedLogo ? (
+                                      <Image src={croppedLogo} alt="School Logo" width={64} height={64} className="rounded-md border p-1 bg-white" />
+                                    ) : (
+                                      <div className="flex items-center justify-center size-16 rounded-md border border-dashed"><p className="text-xs text-muted-foreground">No Logo</p></div>
+                                    )}
+                                    <div className="flex gap-2">
+                                      <Button variant="outline" size="sm" onClick={() => logoInputRef.current?.click()}>
+                                        {croppedLogo ? 'Change' : 'Upload'}
+                                      </Button>
+                                      {croppedLogo && (
+                                         <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="destructive" size="icon" className='size-8'>
+                                                    <Trash2 className='size-4'/>
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                <AlertDialogTitle>Remove Logo?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This will remove the logo from the current session and from your previously used logos. This action cannot be undone.
+                                                </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={handleRemoveCurrentLogo}>Remove</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                      )}
+                                    </div>
+                                  </div>
+                                  
+                                  {previousLogos.length > 0 && (
+                                    <div className='flex-1 space-y-1'>
+                                      <p className="text-sm text-muted-foreground font-medium">Recently Used</p>
+                                      <Carousel opts={{ align: "start", slidesToScroll: 'auto' }} className="w-full max-w-xs">
+                                        <CarouselContent>
+                                          {previousLogos.map((logo, index) => (
+                                            <CarouselItem key={index} className="basis-1/3">
+                                              <div className="p-1 relative group">
+                                                 <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="destructive" size="icon" className='absolute -top-1 -right-1 size-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10'>
+                                                            <X className='size-3'/>
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                        <AlertDialogTitle>Remove This Logo?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            This will remove the logo from your previously used logos. This action cannot be undone.
+                                                        </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleRemovePreviousLogo(logo)}>Remove</AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                                <Card className={cn("overflow-hidden cursor-pointer hover:border-primary", croppedLogo === logo && "border-2 border-primary")}>
+                                                  <CardContent className="flex aspect-square items-center justify-center p-0" onClick={() => setCroppedLogo(logo)}>
+                                                    <Image src={logo} alt={`Previous logo ${index + 1}`} width={80} height={80} className='object-cover w-full h-full'/>
+                                                  </CardContent>
+                                                </Card>
+                                              </div>
+                                            </CarouselItem>
+                                          ))}
+                                        </CarouselContent>
+                                        <CarouselPrevious />
+                                        <CarouselNext />
+                                      </Carousel>
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground px-1">Optional. Recommended size: 1x1 aspect ratio.</p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <Label>Paper size selection</Label>
+                                <RadioGroup defaultValue="Custom" value={paperSize} onValueChange={setPaperSize} className="flex items-center space-x-4 pt-1">
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="A4" id="A4" />
+                                    <Label htmlFor="A4">A4</Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="A5" id="A5" />
+                                    <Label htmlFor="A5">A5</Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="Custom" id="Custom" />
+                                    <Label htmlFor="Custom">Custom (4x8.5)</Label>
+                                  </div>
+                                </RadioGroup>
+                                <p className="text-xs text-muted-foreground px-1">Please use 180 GSM and above paper only.</p>
+
+                              </div>
+                          </div>
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-medium mb-3">Generation Options</h3>
+                             {uniqueGradeLevels.length > 0 ? (
+                                <div className="space-y-4">
+                                    {uniqueGradeLevels.map(gradeLevel => {
+                                        const selectedUrl = selectedTemplateUrls[gradeLevel];
+                                        const selectedTemplate = templates.find(t => t.download_url === selectedUrl);
+                                        return (
+                                            <div key={gradeLevel} className="flex flex-col md:flex-row gap-6 justify-between items-center border p-4 rounded-xl bg-card hover:shadow-sm transition-shadow">
+                                                <div className="flex-1 space-y-3 flex flex-col justify-center w-full">
+                                                    <div className="flex items-center space-x-2">
+                                                        <FileIcon className="size-5 text-primary" />
+                                                        <Label className="font-bold text-base text-foreground">Grade {gradeLevel} Template</Label>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">Select the official Word (.docx) template layout for Grade {gradeLevel}.</p>
+                                                    
+                                                    <Select
+                                                        value={selectedUrl || ''}
+                                                        onValueChange={(value) => setSelectedTemplateUrls(prev => ({...prev, [gradeLevel]: value}))}
+                                                    >
+                                                        <SelectTrigger className={cn("w-full bg-background", !selectedUrl && "border-destructive")}>
+                                                            <SelectValue placeholder="Choose a template..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {isTemplatesLoading ? (
+                                                                <SelectItem value="loading" disabled>Loading templates...</SelectItem>
+                                                            ) : templates.length > 0 ? (
+                                                                templates.map(template => (
+                                                                    <SelectItem key={template.name} value={template.download_url}>
+                                                                        {template.name}
+                                                                    </SelectItem>
+                                                                ))
+                                                            ) : (
+                                                                <SelectItem value="no-files" disabled>No templates available.</SelectItem>
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    
+                                                    {selectedTemplate && (
+                                                        <div className="flex items-center space-x-1.5 text-xs text-green-600 font-medium">
+                                                            <CheckCircle2 className="size-4" />
+                                                            <span>Template mapped successfully</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="flex-shrink-0 flex items-center justify-center bg-muted/20 dark:bg-muted/5 p-3 rounded-lg border border-dashed w-full md:w-auto">
+                                                    <TemplatePreviewCard 
+                                                        gradeLevel={gradeLevel} 
+                                                        templateName={selectedTemplate?.name || null}
+                                                        schoolLogo={croppedLogo}
+                                                        schoolName={filesData.find(f => f.fileInfo.gradeLevel === gradeLevel)?.fileInfo.school || sharedInfo.school || ''}
+                                                        adviserName={filesData.find(f => f.fileInfo.gradeLevel === gradeLevel)?.fileInfo.adviser || ''}
+                                                        schoolHead={sharedInfo.schoolHead}
+                                                        schoolHeadDesignation={sharedInfo.schoolHeadDesignation}
+                                                        region={sharedInfo.region}
+                                                        division={sharedInfo.division}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">No files processed to select templates.</p>
+                            )}
+
+                            <p className="text-sm text-muted-foreground px-1 mt-4">Note: Back part of the School Form 9 is included in the last page of each generated copy.</p>
+                            <div className="mt-6 border-t pt-6 flex items-center justify-between">
+                                <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
+                                <Button 
+                                    onClick={() => setIsSummaryDialogOpen(true)} 
+                                    disabled={isSF9ActionDisabled} 
+                                    size="lg" 
+                                    className="h-12 text-base"
+                                >
+                                    <FileText className="mr-2" /> Generate School Form 9
+                                </Button>
+                            </div>
+                        </div>
+
+                    </CardContent>
+                </Card>
+            </div>
+          </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
