@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
                 description: lineItemDescription,
               }
             ],
-            payment_method_types: ['card', 'gcash', 'paymaya', 'grab_pay'],
+            payment_method_types: ['qrph', 'card', 'gcash', 'paymaya', 'grab_pay'],
             success_url: `${origin}/?payment_status=success`,
             cancel_url: `${origin}/?payment_status=cancelled`,
             description: `Payment for SF9 document generation of ${studentCount} student(s).`
