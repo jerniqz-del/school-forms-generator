@@ -174,6 +174,114 @@ const regions = [
 
 let schoolYears = Array.from({ length: 5 }, (_, i) => `${2025 + i}-${2026 + i}`);
 
+const formatNameWithMiddleInitialForDocx = (name: string): string => {
+    const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
+    let cleanedName = name.trim().toUpperCase()
+        .replace(/\s*,\s*/g, ", ")
+        .replace(/ , -/g, '')
+        .replace(/\s+/g, ' ');
+
+    const parts = cleanedName.split(', ').filter(p => p.trim() !== '');
+    if (parts.length < 3) return cleanedName;
+
+    const lastName = parts[0];
+    let firstName = parts[1];
+    let middleAndSuffix = parts.slice(2).join(' ');
+    let foundSuffix = "";
+    let middleName = middleAndSuffix;
+
+    for (const suffix of SUFFIX_LIST) {
+        if (middleAndSuffix.startsWith(suffix + ' ') || middleAndSuffix === suffix) {
+            foundSuffix = suffix;
+            middleName = middleAndSuffix.substring(suffix.length).trim();
+            break;
+        }
+        if (firstName.endsWith(' ' + suffix)) {
+            foundSuffix = suffix;
+            firstName = firstName.substring(0, firstName.length - suffix.length - 1).trim();
+            break;
+        }
+    }
+
+    if (middleName) {
+        const hyphenIndex = middleName.indexOf(' - ');
+        if (hyphenIndex !== -1) {
+            middleName = middleName.substring(0, hyphenIndex).trim();
+        }
+
+        return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''} ${middleName.charAt(0)}.`;
+    }
+
+    return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''}`;
+};
+
+async function buildSf9DocxBlob({
+    templateUrl,
+    fileData,
+    sharedInfo,
+    croppedLogo,
+    useMiddleInitial,
+    isPromo = false,
+    previewOnly = false,
+}: {
+    templateUrl: string;
+    fileData: FileData;
+    sharedInfo: SharedInfo;
+    croppedLogo: string | null;
+    useMiddleInitial: boolean;
+    isPromo?: boolean;
+    previewOnly?: boolean;
+}) {
+    const response = await fetch(`/api/download-template?url=${encodeURIComponent(templateUrl)}`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch template for ${fileData.fileName}: ${response.statusText}`);
+    }
+
+    const templateBlob = await response.arrayBuffer();
+    const zip = new PizZip(templateBlob);
+    const imageModule = new ImageModule({
+        centered: false,
+        getImage: (tag: string) => {
+            if (tag === 'logo' && croppedLogo) {
+                return Buffer.from(croppedLogo.split(',')[1], 'base64');
+            }
+            return null;
+        },
+        getSize: () => [54, 54],
+    });
+
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
+    const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
+    const studentsForRender = previewOnly ? selectedStudents.slice(0, 1) : selectedStudents;
+    let exportData = studentsForRender.map((student, index) => ({
+        ...student,
+        'No.': index + 1,
+        Name: useMiddleInitial ? formatNameWithMiddleInitialForDocx(student.Name) : student.Name,
+    }));
+
+    if (isPromo && !previewOnly) {
+        const blankStudent: StudentRecord = { LRN: '', Name: '', Sex: '', Birthdate: '', Age: '', Barangay: '', Municipality: '', Province: '' };
+        const lastStudentNumber = exportData.length;
+        exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
+        exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
+    }
+
+    const finalData: any = {
+        ...fileData.fileInfo,
+        ...sharedInfo,
+        students: exportData,
+        logo: croppedLogo ? 'logo' : undefined,
+    };
+
+    doc.setData(finalData);
+    doc.render();
+
+    return {
+        blob: doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+        selectedCount: selectedStudents.length,
+    };
+}
+
 
 const LoadingOverlay = ({ message }: { message: string }) => (
     <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-50 backdrop-blur-sm">
@@ -287,6 +395,10 @@ const TemplatePreviewCard = ({
   schoolYear,
   sampleStudent,
   selectedCount,
+  templateUrl,
+  fileData,
+  sharedInfo,
+  useMiddleInitial,
 }: {
   gradeLevel: string;
   templateName: string | null;
@@ -301,13 +413,117 @@ const TemplatePreviewCard = ({
   schoolYear: string;
   sampleStudent: StudentRecord | null;
   selectedCount: number;
+  templateUrl: string | null;
+  fileData: FileData | null;
+  sharedInfo: SharedInfo;
+  useMiddleInitial: boolean;
 }) => {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+
+  useEffect(() => {
+    if (!templateUrl || !fileData || fileData.selectedRows.size === 0) {
+      setPreviewStatus('idle');
+      setPreviewUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    let isCancelled = false;
+    let objectUrl: string | null = null;
+    setPreviewStatus('loading');
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const { blob } = await buildSf9DocxBlob({
+          templateUrl,
+          fileData,
+          sharedInfo,
+          croppedLogo: schoolLogo,
+          useMiddleInitial,
+          previewOnly: true,
+        });
+
+        const formData = new FormData();
+        formData.append('file', blob, `preview_${gradeLevel}.docx`);
+
+        const response = await fetch('/api/convert-docx-to-pdf', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Preview conversion failed.');
+        }
+
+        const pdfBlob = await response.blob();
+        objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (!isCancelled) {
+          setPreviewUrl(prev => {
+            if (prev) URL.revokeObjectURL(prev);
+            return objectUrl;
+          });
+          setPreviewStatus('ready');
+          objectUrl = null;
+        }
+      } catch (error) {
+        console.error('Preview generation failed:', error);
+        if (!isCancelled) {
+          setPreviewStatus('error');
+          setPreviewUrl(prev => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        }
+      }
+    }, 900);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [
+    templateUrl,
+    fileData,
+    sharedInfo,
+    schoolLogo,
+    useMiddleInitial,
+    gradeLevel,
+    sampleStudent?.LRN,
+    selectedCount,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
   if (!templateName) {
     return (
       <div className="w-[180px] h-[240px] border border-dashed rounded-lg flex flex-col items-center justify-center bg-muted/10 text-muted-foreground p-3 transition-colors hover:bg-muted/20">
         <FileIcon className="size-8 stroke-[1.2] mb-2 animate-pulse text-muted-foreground/50" />
         <span className="text-[11px] font-semibold text-center">No Template Selected</span>
         <span className="text-[9px] text-center opacity-75 mt-1 leading-normal">Choose layout to see a live visual mockup</span>
+      </div>
+    );
+  }
+
+  if (previewStatus === 'ready' && previewUrl) {
+    return (
+      <div className="w-[180px] h-[240px] border rounded-lg bg-background overflow-hidden shadow-sm relative">
+        <iframe
+          title={`Live preview for Grade ${gradeLevel}`}
+          src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+          className="h-full w-full bg-white"
+        />
+        <div className="absolute left-2 top-2 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-semibold text-primary shadow-sm">
+          Live Preview
+        </div>
       </div>
     );
   }
@@ -352,6 +568,17 @@ const TemplatePreviewCard = ({
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
         <FileIcon className="size-24" />
       </div>
+      {previewStatus === 'loading' && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/85 text-primary backdrop-blur-[1px] dark:bg-slate-900/85">
+          <Loader2 className="size-5 animate-spin" />
+          <span className="mt-1 text-[9px] font-semibold">Rendering preview</span>
+        </div>
+      )}
+      {previewStatus === 'error' && (
+        <div className="absolute left-2 right-2 top-2 z-10 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[8px] font-medium text-amber-800 shadow-sm">
+          Live preview unavailable
+        </div>
+      )}
 
       <div className="space-y-0.5 text-center border-b pb-1 border-gray-100 dark:border-slate-800">
         <p className="text-[5.5px] uppercase tracking-wider text-gray-400 font-semibold leading-none">Republic of the Philippines</p>
@@ -748,52 +975,15 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
                     throw new Error(`No template selected for ${fileData.fileInfo.gradeLevel}.`);
                 }
 
-                const response = await fetch(`/api/download-template?url=${encodeURIComponent(templateUrl)}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch template for ${fileData.fileName}: ${response.statusText}`);
-                }
-                const templateBlob = await response.arrayBuffer();
-                const zip = new PizZip(templateBlob);
-
-                const imageModule = new ImageModule({
-                    centered: false,
-                    getImage: (tag: string) => {
-                        if (tag === 'logo' && currentCroppedLogo) {
-                            return Buffer.from(currentCroppedLogo.split(',')[1], 'base64');
-                        }
-                        return null;
-                    },
-                    getSize: () => [54, 54],
+                const { blob: output, selectedCount } = await buildSf9DocxBlob({
+                    templateUrl,
+                    fileData,
+                    sharedInfo: currentSharedInfo,
+                    croppedLogo: currentCroppedLogo,
+                    useMiddleInitial: useMI,
+                    isPromo,
                 });
-
-                const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
-
-                const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
-                let exportData = selectedStudents.map((student, index) => ({
-                    ...student,
-                    'No.': index + 1,
-                    Name: useMI ? formatNameWithMiddleInitial(student.Name) : student.Name,
-                }));
-                
-                if (isPromo) {
-                    const blankStudent: StudentRecord = { LRN: '', Name: '', Sex: '', Birthdate: '', Age: '', Barangay: '', Municipality: '', Province: '' };
-                    const lastStudentNumber = exportData.length;
-                    exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
-                    exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
-                }
-
-                const finalData: any = {
-                    ...fileData.fileInfo,
-                    ...currentSharedInfo,
-                    students: exportData,
-                    logo: currentCroppedLogo ? 'logo' : undefined,
-                };
-                
-                doc.setData(finalData);
-
-                doc.render();
-                const output = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-                const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedStudents.length}_students).docx`;
+                const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedCount}_students).docx`;
 
                 if (currentDocumentType === 'pdf') {
                     const formData = new FormData();
@@ -2769,6 +2959,10 @@ const formatPolishedName = (name: string): string => {
                                                         schoolYear={sharedInfo.schoolYear}
                                                         sampleStudent={sampleStudent}
                                                         selectedCount={previewFile?.selectedRows.size || 0}
+                                                        templateUrl={selectedUrl || null}
+                                                        fileData={previewFile || null}
+                                                        sharedInfo={sharedInfo}
+                                                        useMiddleInitial={useMiddleInitial}
                                                     />
                                                 </div>
                                             </div>
