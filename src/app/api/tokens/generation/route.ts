@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
+import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { calculateTokenCost } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
@@ -10,7 +9,8 @@ export async function POST(request: NextRequest) {
   try {
     const uid = await requireUserIdFromRequest(request);
     const { action, reservationId, studentCount } = await request.json();
-    const db = getAdminFirestore();
+    const db = await getAdminFirestore();
+    const FieldValue = await getAdminFieldValue();
     const walletRef = db.collection('tokenWallets').doc(uid);
 
     if (action === 'reserve') {

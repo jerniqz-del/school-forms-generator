@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
+import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { TOKEN_RELOAD_MIN_PESOS, calculateTokenReload } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
@@ -28,6 +27,8 @@ export async function POST(request: NextRequest) {
     const reload = calculateTokenReload(amount);
     const origin = request.headers.get('origin') || 'http://localhost:3000';
     const authHeader = `Basic ${Buffer.from(secretKey + ':').toString('base64')}`;
+    const db = await getAdminFirestore();
+    const FieldValue = await getAdminFieldValue();
 
     const response = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
       method: 'POST',
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Checkout session was incomplete.');
     }
 
-    await getAdminFirestore().collection('tokenReloads').doc(checkoutSessionId).set({
+    await db.collection('tokenReloads').doc(checkoutSessionId).set({
       uid,
       checkoutSessionId,
       amountPesos: reload.amountPesos,

@@ -1,7 +1,6 @@
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
 import firebaseConfigData from '@/firebase/firebase-applet-config.json';
+
+let adminAppPromise: Promise<any> | null = null;
 
 function getPrivateKey() {
   const rawKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -17,7 +16,9 @@ function getPrivateKey() {
   return unquotedKey.replace(/\\n/g, '\n');
 }
 
-function initAdminApp() {
+async function initAdminApp() {
+  const { cert, getApps, initializeApp } = await import('firebase-admin/app');
+
   if (getApps().length > 0) {
     return getApps()[0];
   }
@@ -47,14 +48,23 @@ function initAdminApp() {
   });
 }
 
-export function getAdminAuth() {
-  initAdminApp();
+export async function getAdminAuth() {
+  adminAppPromise ??= initAdminApp();
+  await adminAppPromise;
+  const { getAuth } = await import('firebase-admin/auth');
   return getAuth();
 }
 
-export function getAdminFirestore() {
-  initAdminApp();
+export async function getAdminFirestore() {
+  adminAppPromise ??= initAdminApp();
+  await adminAppPromise;
+  const { getFirestore } = await import('firebase-admin/firestore');
   return getFirestore();
+}
+
+export async function getAdminFieldValue() {
+  const { FieldValue } = await import('firebase-admin/firestore');
+  return FieldValue;
 }
 
 export async function requireUserIdFromRequest(request: Request) {
@@ -70,5 +80,6 @@ export async function requireDecodedTokenFromRequest(request: Request) {
     throw new Error('Sign in is required.');
   }
 
-  return getAdminAuth().verifyIdToken(token);
+  const auth = await getAdminAuth();
+  return auth.verifyIdToken(token);
 }

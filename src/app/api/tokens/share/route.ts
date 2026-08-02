@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
+import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +17,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Enter a valid token amount.' }, { status: 400 });
     }
 
-    const db = getAdminFirestore();
+    const db = await getAdminFirestore();
+    const FieldValue = await getAdminFieldValue();
     const senderRef = db.collection('tokenWallets').doc(uid);
     const normalizedEmail = recipientEmail.trim().toLowerCase();
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
+import { getAdminFieldValue, getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
 import { FREE_SIGNUP_TOKENS, REFERRAL_REWARD_TOKENS } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
@@ -11,7 +10,8 @@ function buildReferralCode(uid: string) {
 }
 
 async function ensureWallet(uid: string, email?: string | null, referralCode?: string | null) {
-  const db = getAdminFirestore();
+  const db = await getAdminFirestore();
+  const FieldValue = await getAdminFieldValue();
   const walletRef = db.collection('tokenWallets').doc(uid);
   const normalizedEmail = email?.toLowerCase() || null;
 
