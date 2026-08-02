@@ -218,6 +218,21 @@ type ReferralSummary = {
   }>;
 };
 
+type TokenHistoryItem = {
+  id: string;
+  type: string;
+  tokens: number;
+  amountPesos: number | null;
+  studentCount: number | null;
+  completedGenerations: number | null;
+  recipientEmail: string | null;
+  referrerUid: string | null;
+  referredUid: string | null;
+  checkoutSessionId: string | null;
+  reservationId: string | null;
+  createdAt: string | null;
+};
+
 type DriveBackupFile = {
   id: string;
   name: string;
@@ -419,6 +434,8 @@ const IS_LIVE_PDF_PREVIEW_ENABLED = false;
 const PAID_GENERATION_TOKENS_STORAGE_KEY = 'paidGenerationTokens';
 const DRIVE_BACKUP_FOLDER_STORAGE_KEY = 'schoolFormsGeneratorDriveFolderId';
 const DRIVE_BACKUP_FOLDER_NAME = 'School Forms Generator - Generated SF9';
+const DRIVE_UPLOAD_FOLDER_STORAGE_KEY = 'schoolFormsGeneratorUploadFolderId';
+const DRIVE_UPLOAD_FOLDER_NAME = 'School Forms Generator - Uploaded SF1';
 
 
 const HistoryBadges = ({
@@ -798,13 +815,16 @@ const TemplatePreviewCard = ({
   );
 };
 
-function getGeneratedFileMimeType(fileName: string) {
-  if (fileName.toLowerCase().endsWith('.zip')) return 'application/zip';
-  if (fileName.toLowerCase().endsWith('.pdf')) return 'application/pdf';
+function getDriveFileMimeType(fileName: string) {
+  const lowerFileName = fileName.toLowerCase();
+  if (lowerFileName.endsWith('.zip')) return 'application/zip';
+  if (lowerFileName.endsWith('.pdf')) return 'application/pdf';
+  if (lowerFileName.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lowerFileName.endsWith('.xls')) return 'application/vnd.ms-excel';
   return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 }
 
-async function createDriveFolder(accessToken: string) {
+async function createDriveFolder(accessToken: string, folderName: string) {
   const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', {
     method: 'POST',
     headers: {
@@ -812,7 +832,7 @@ async function createDriveFolder(accessToken: string) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      name: DRIVE_BACKUP_FOLDER_NAME,
+      name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
     }),
   });
@@ -825,9 +845,9 @@ async function createDriveFolder(accessToken: string) {
   return response.json();
 }
 
-async function getDriveBackupFolderId(accessToken: string) {
+async function getDriveFolderId(accessToken: string, storageKey: string, folderName: string) {
   const savedFolderId = typeof window !== 'undefined'
-    ? localStorage.getItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY)
+    ? localStorage.getItem(storageKey)
     : null;
 
   if (savedFolderId) {
@@ -838,11 +858,19 @@ async function getDriveBackupFolderId(accessToken: string) {
     if (response.ok && !data?.trashed) return savedFolderId;
   }
 
-  const folder = await createDriveFolder(accessToken);
+  const folder = await createDriveFolder(accessToken, folderName);
   if (typeof window !== 'undefined' && folder?.id) {
-    localStorage.setItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY, folder.id);
+    localStorage.setItem(storageKey, folder.id);
   }
   return folder.id as string;
+}
+
+async function getDriveBackupFolderId(accessToken: string) {
+  return getDriveFolderId(accessToken, DRIVE_BACKUP_FOLDER_STORAGE_KEY, DRIVE_BACKUP_FOLDER_NAME);
+}
+
+async function getDriveUploadFolderId(accessToken: string) {
+  return getDriveFolderId(accessToken, DRIVE_UPLOAD_FOLDER_STORAGE_KEY, DRIVE_UPLOAD_FOLDER_NAME);
 }
 
 async function getDriveBackupFolder(accessToken: string) {
@@ -854,6 +882,20 @@ async function getDriveBackupFolder(accessToken: string) {
 
   if (!response.ok) {
     throw new Error(data?.error?.message || 'Could not load Google Drive backup folder.');
+  }
+
+  return data as { id: string; name: string; webViewLink?: string };
+}
+
+async function getDriveUploadFolder(accessToken: string) {
+  const folderId = await getDriveUploadFolderId(accessToken);
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,webViewLink`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || 'Could not load Google Drive upload folder.');
   }
 
   return data as { id: string; name: string; webViewLink?: string };
@@ -879,12 +921,12 @@ async function listGoogleDriveBackupFiles(accessToken: string) {
   return data.files as DriveBackupFile[];
 }
 
-async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, blob: Blob) {
-  const folderId = await getDriveBackupFolderId(accessToken);
-  const mimeType = getGeneratedFileMimeType(fileName);
+async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, blob: Blob, folderId?: string) {
+  const targetFolderId = folderId || await getDriveBackupFolderId(accessToken);
+  const mimeType = getDriveFileMimeType(fileName);
   const metadata = {
     name: fileName,
-    parents: [folderId],
+    parents: [targetFolderId],
   };
   const boundary = `school_forms_generator_${Date.now()}`;
   const body = new Blob([
@@ -908,10 +950,41 @@ async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, bl
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data?.error?.message || 'Could not save the generated file to Google Drive.');
+    throw new Error(data?.error?.message || 'Could not save the file to Google Drive.');
   }
 
   return data as { id: string; name: string; webViewLink?: string };
+}
+
+function getTokenHistoryTitle(type: string) {
+  const labels: Record<string, string> = {
+    signup_bonus: 'Welcome bonus',
+    referral_signup_bonus: 'Referral signup bonus',
+    share_received: 'Tokens received',
+    share_sent: 'Tokens shared',
+    reload: 'Token reload',
+    referral_reward: 'Referral reward',
+    generation: 'Forms generated',
+    generation_reward: 'Generation reward',
+  };
+  return labels[type] || 'Token activity';
+}
+
+function getTokenHistoryDetail(item: TokenHistoryItem) {
+  if (item.type === 'reload' && item.amountPesos) return `Reloaded PHP ${item.amountPesos}.`;
+  if (item.type === 'generation' && item.studentCount) return `${item.studentCount} student form(s) generated.`;
+  if (item.type === 'generation_reward' && item.completedGenerations) return `Reward for reaching ${item.completedGenerations} generated student form(s).`;
+  if (item.type === 'share_sent' && item.recipientEmail) return `Shared with ${item.recipientEmail}.`;
+  if (item.type === 'share_received') return 'Received from another registered user.';
+  if (item.type === 'referral_signup_bonus') return 'Bonus for signing up with a referral link.';
+  if (item.type === 'referral_reward') return 'Reward after a referred teacher completed their first reload.';
+  if (item.type === 'signup_bonus') return 'Initial free tokens for a new account.';
+  return 'Wallet balance activity.';
+}
+
+function formatTokenHistoryDate(value: string | null) {
+  if (!value) return 'Date unavailable';
+  return new Date(value).toLocaleString();
 }
 
 
@@ -1018,11 +1091,15 @@ export default function Home() {
   const [tokenWallet, setTokenWallet] = useState<TokenWallet | null>(null);
   const [isTokenReloadOpen, setIsTokenReloadOpen] = useState(false);
   const [isTokenShareOpen, setIsTokenShareOpen] = useState(false);
+  const [isTokenHistoryOpen, setIsTokenHistoryOpen] = useState(false);
+  const [isTokenHistoryLoading, setIsTokenHistoryLoading] = useState(false);
   const [isReferralRewardsOpen, setIsReferralRewardsOpen] = useState(false);
   const [isDriveFilesOpen, setIsDriveFilesOpen] = useState(false);
   const [isDriveFilesLoading, setIsDriveFilesLoading] = useState(false);
   const [driveBackupFiles, setDriveBackupFiles] = useState<DriveBackupFile[]>([]);
   const [driveBackupFolderLink, setDriveBackupFolderLink] = useState<string | null>(null);
+  const [driveUploadFolderLink, setDriveUploadFolderLink] = useState<string | null>(null);
+  const [tokenHistory, setTokenHistory] = useState<TokenHistoryItem[]>([]);
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [reloadAmountPesos, setReloadAmountPesos] = useState(TOKEN_RELOAD_MIN_PESOS);
   const [shareEmail, setShareEmail] = useState('');
@@ -1936,6 +2013,23 @@ const formatPolishedName = (name: string): string => {
         }
     }
 
+    if (saveToDriveBackup && processedFiles.length > 0) {
+      try {
+        setLoadingMessage('Saving uploaded files to Google Drive...');
+        const driveAccessToken = await getGoogleDriveAccessToken();
+        const uploadFolderId = await getDriveUploadFolderId(driveAccessToken);
+        await Promise.all(
+          pendingFiles.map(file => uploadBlobToGoogleDrive(driveAccessToken, file.name, file, uploadFolderId))
+        );
+      } catch (driveError: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Uploaded File Backup Failed',
+          description: driveError.message || 'The SF1 files were processed, but could not be saved to Google Drive.',
+        });
+      }
+    }
+
     setFilesData(processedFiles);
     setOpenAccordions(processedFiles.map(f => f.id));
     
@@ -2300,6 +2394,31 @@ const formatPolishedName = (name: string): string => {
     }
   };
 
+  const handleOpenTokenHistory = async () => {
+    setIsTokenHistoryOpen(true);
+    setIsTokenHistoryLoading(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/tokens/history', { headers });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Could not load token history.'));
+      }
+
+      const data = await response.json().catch(() => null);
+      setTokenHistory(data?.history || []);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Token History Failed',
+        description: error.message || 'Could not load token history.',
+      });
+    } finally {
+      setIsTokenHistoryLoading(false);
+    }
+  };
+
   const handleOpenReferralRewards = async () => {
     setIsReferralRewardsOpen(true);
 
@@ -2330,11 +2449,13 @@ const formatPolishedName = (name: string): string => {
 
     try {
       const accessToken = await getGoogleDriveAccessToken();
-      const [folder, files] = await Promise.all([
+      const [folder, uploadFolder, files] = await Promise.all([
         getDriveBackupFolder(accessToken),
+        getDriveUploadFolder(accessToken),
         listGoogleDriveBackupFiles(accessToken),
       ]);
       setDriveBackupFolderLink(folder.webViewLink || null);
+      setDriveUploadFolderLink(uploadFolder.webViewLink || null);
       setDriveBackupFiles(files || []);
     } catch (error: any) {
       toast({
@@ -2753,6 +2874,10 @@ const formatPolishedName = (name: string): string => {
                 <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>
                   <Share2 className="mr-2 size-4" />
                   Share
+                </Button>
+                <Button variant="outline" onClick={handleOpenTokenHistory}>
+                  <History className="mr-2 size-4" />
+                  History
                 </Button>
                 <Button variant="outline" onClick={handleOpenDriveFiles}>
                   <Files className="mr-2 size-4" />
@@ -3218,15 +3343,60 @@ const formatPolishedName = (name: string): string => {
             </DialogContent>
         </Dialog>
 
+        <Dialog open={isTokenHistoryOpen} onOpenChange={setIsTokenHistoryOpen}>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <History className="size-5 text-primary" />
+                        Token History
+                    </DialogTitle>
+                    <DialogDescription>
+                        Review token reloads, usage, sharing, and rewards for your account.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="rounded-lg border">
+                    <div className="max-h-96 divide-y overflow-y-auto">
+                        {isTokenHistoryLoading ? (
+                            <div className="flex items-center justify-center gap-2 px-3 py-10 text-sm text-muted-foreground">
+                                <Loader2 className="size-4 animate-spin" />
+                                Loading token history...
+                            </div>
+                        ) : tokenHistory.length ? tokenHistory.map(item => (
+                            <div key={item.id} className="flex items-start justify-between gap-4 px-3 py-3 text-sm">
+                                <div className="min-w-0">
+                                    <p className="font-medium">{getTokenHistoryTitle(item.type)}</p>
+                                    <p className="text-xs text-muted-foreground">{getTokenHistoryDetail(item)}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">{formatTokenHistoryDate(item.createdAt)}</p>
+                                </div>
+                                <Badge variant={item.tokens >= 0 ? 'default' : 'secondary'} className="shrink-0">
+                                    {item.tokens >= 0 ? '+' : ''}{item.tokens}
+                                </Badge>
+                            </div>
+                        )) : (
+                            <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                No token history yet.
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={handleOpenTokenHistory} disabled={isTokenHistoryLoading}>
+                        {isTokenHistoryLoading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCw className="mr-2 size-4" />}
+                        Refresh
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
         <Dialog open={isDriveFilesOpen} onOpenChange={setIsDriveFilesOpen}>
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Files className="size-5 text-primary" />
-                        Generated Files in Google Drive
+                        Google Drive Files
                     </DialogTitle>
                     <DialogDescription>
-                        View files saved by School Forms Generator in your Google Drive backup folder.
+                        View generated files and open the folders saved by School Forms Generator.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -3241,7 +3411,15 @@ const formatPolishedName = (name: string): string => {
                             onClick={() => driveBackupFolderLink && window.open(driveBackupFolderLink, '_blank', 'noopener,noreferrer')}
                         >
                             <Link className="mr-2 size-4" />
-                            Open Folder in Drive
+                            Open Generated Folder
+                        </Button>
+                        <Button
+                            variant="outline"
+                            disabled={!driveUploadFolderLink}
+                            onClick={() => driveUploadFolderLink && window.open(driveUploadFolderLink, '_blank', 'noopener,noreferrer')}
+                        >
+                            <Upload className="mr-2 size-4" />
+                            Open Uploaded SF1 Folder
                         </Button>
                     </div>
                     <div className="rounded-lg border">
