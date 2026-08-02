@@ -833,6 +833,8 @@ export default function Home() {
   const [isPurchaseConfirmationOpen, setIsPurchaseConfirmationOpen] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
+  const [isPaymentRecoveryOpen, setIsPaymentRecoveryOpen] = useState(false);
+  const [paymentRecoveryError, setPaymentRecoveryError] = useState<string | null>(null);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -1019,7 +1021,11 @@ const formatNameWithMiddleInitial = (name: string): string => {
     return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''}`;
 };
 
-const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo: boolean) => {
+const handleGenerateSF9 = useCallback(async (
+    generationState: AppState,
+    isPromo: boolean,
+    options?: { showPaymentRecovery?: boolean }
+): Promise<boolean> => {
     const {
         filesData: currentFilesData,
         sharedInfo: currentSharedInfo,
@@ -1037,7 +1043,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
             title: 'No Students Selected',
             description: 'Please select at least one student from any file.',
         });
-        return;
+        return false;
     }
     
     setLoadingMessage('Generating documents, please wait...');
@@ -1112,6 +1118,8 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
         }
 
         clearStateFromLocalStorage();
+        setPaymentRecoveryError(null);
+        setIsPaymentRecoveryOpen(false);
         setIsPostGenerateDialogOpen(true);
 
         toast({
@@ -1119,14 +1127,23 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
             title: 'Generation Complete',
             description: `${generatedFiles.length} ${currentDocumentType.toUpperCase()} document(s) have been generated.`,
         });
+        return true;
 
     } catch (error: any) {
         console.error("Error generating SF9:", error);
+        const message = error.message || "An unexpected error occurred.";
+        if (options?.showPaymentRecovery) {
+            setPaymentRecoveryError(message);
+            setIsPaymentRecoveryOpen(true);
+        }
         toast({
             variant: "destructive",
             title: "Generation Failed",
-            description: error.message || "An unexpected error occurred.",
+            description: options?.showPaymentRecovery
+                ? "Your payment is confirmed. You can retry generation without paying again."
+                : message,
         });
+        return false;
     } finally {
         setIsProcessing(false);
     }
@@ -1189,7 +1206,7 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
                   title: "Payment Confirmed!",
                   description: "Your file(s) are being generated...",
               });
-              await handleGenerateSF9(restoredState, false); // isPromo is false for regular payment
+              await handleGenerateSF9(restoredState, false, { showPaymentRecovery: true }); // isPromo is false for regular payment
           } else {
               toast({
                   variant: 'destructive',
@@ -1208,6 +1225,55 @@ const handleGenerateSF9 = useCallback(async (generationState: AppState, isPromo:
     };
 
     processPayment();
+  }, [handleGenerateSF9, loadStateFromLocalStorage, toast]);
+
+  const handleRetryPaidGeneration = useCallback(async () => {
+      const restoredState = loadStateFromLocalStorage();
+      const checkoutSessionId = localStorage.getItem('checkoutSessionId');
+
+      if (!restoredState || !checkoutSessionId) {
+          setPaymentRecoveryError('The saved payment session could not be found. Please contact support with your PayMongo receipt.');
+          toast({
+              variant: 'destructive',
+              title: 'Retry Unavailable',
+              description: 'The saved payment session could not be found.',
+          });
+          return;
+      }
+
+      const totalSelected = restoredState.filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+      const restoredDocumentType = IS_PDF_OUTPUT_ENABLED && restoredState.documentType === 'pdf' ? 'pdf' : 'docx';
+      restoredState.documentType = restoredDocumentType;
+
+      setIsPaymentRecoveryOpen(false);
+      setLoadingMessage('Rechecking payment before retrying generation...');
+      setIsProcessing(true);
+
+      try {
+          const verifyResponse = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ checkoutSessionId, studentCount: totalSelected, documentType: restoredDocumentType }),
+          });
+
+          const verifyData = await verifyResponse.json().catch(() => null);
+          if (!verifyResponse.ok || !verifyData?.verified) {
+              throw new Error(verifyData?.error || 'PayMongo has not confirmed this payment yet.');
+          }
+
+          await handleGenerateSF9(restoredState, false, { showPaymentRecovery: true });
+      } catch (error: any) {
+          const message = error.message || 'Could not retry generation.';
+          setPaymentRecoveryError(message);
+          setIsPaymentRecoveryOpen(true);
+          toast({
+              variant: 'destructive',
+              title: 'Retry Failed',
+              description: message,
+          });
+      } finally {
+          setIsProcessing(false);
+      }
   }, [handleGenerateSF9, loadStateFromLocalStorage, toast]);
 
 
@@ -2352,6 +2418,31 @@ const formatPolishedName = (name: string): string => {
                 <DialogFooter className="sm:justify-center">
                     <Button variant="outline" onClick={() => setIsCheckoutDialogOpen(false)}>
                         Close
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isPaymentRecoveryOpen} onOpenChange={setIsPaymentRecoveryOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <div className="mx-auto mb-2 flex size-11 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                        <AlertTriangle className="size-5" />
+                    </div>
+                    <DialogTitle className="text-center">Payment Confirmed</DialogTitle>
+                    <DialogDescription className="text-center">
+                        Your payment was verified, but the document download did not complete.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                    {paymentRecoveryError || 'You can retry generation without paying again.'}
+                </div>
+                <DialogFooter className="flex-col sm:flex-col sm:space-x-0 gap-2">
+                    <Button onClick={handleRetryPaidGeneration} className="w-full">
+                        Retry File Generation
+                    </Button>
+                    <Button variant="outline" onClick={() => setIsPaymentRecoveryOpen(false)} className="w-full">
+                        Keep This for Later
                     </Button>
                 </DialogFooter>
             </DialogContent>
