@@ -2821,7 +2821,14 @@ const formatPolishedName = (name: string): string => {
 
   return (
     <TooltipProvider>
-      {hasMounted && <AppHeader availableTokens={tokenWallet?.tokens ?? null} />}
+      {hasMounted && (
+        <AppHeader
+          availableTokens={tokenWallet?.tokens ?? null}
+          onReloadTokens={() => setIsTokenReloadOpen(true)}
+          onShareTokens={() => setIsTokenShareOpen(true)}
+          onOpenTokenHistory={handleOpenTokenHistory}
+        />
+      )}
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
 
@@ -2867,18 +2874,6 @@ const formatPolishedName = (name: string): string => {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setIsTokenReloadOpen(true)}>
-                  <Coins className="mr-2 size-4" />
-                  Reload
-                </Button>
-                <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>
-                  <Share2 className="mr-2 size-4" />
-                  Share
-                </Button>
-                <Button variant="outline" onClick={handleOpenTokenHistory}>
-                  <History className="mr-2 size-4" />
-                  History
-                </Button>
                 <Button variant="outline" onClick={handleOpenDriveFiles}>
                   <Files className="mr-2 size-4" />
                   Drive Files
