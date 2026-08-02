@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from "react";
-import { deleteUser } from "firebase/auth";
+import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -55,9 +55,9 @@ export function AppHeader({
         .slice(0, 2)
         .toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
 
-    const getAuthHeaders = async () => {
+    const getAuthHeaders = async (forceRefresh = false) => {
         if (!user) throw new Error('Sign in is required.');
-        const token = await user.getIdToken();
+        const token = await user.getIdToken(forceRefresh);
         return { Authorization: `Bearer ${token}` };
     };
 
@@ -94,19 +94,20 @@ export function AppHeader({
     const handleDeleteAccount = async () => {
         setIsAccountActionLoading(true);
         try {
+            if (!user) throw new Error('Sign in is required.');
+
+            const provider = new GoogleAuthProvider();
+            await reauthenticateWithPopup(user, provider);
+
             const response = await fetch('/api/account', {
                 method: 'DELETE',
-                headers: await getAuthHeaders(),
+                headers: await getAuthHeaders(true),
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(data?.error || 'Unable to delete account.');
 
             setIsDeleteDialogOpen(false);
-            if (user) {
-                await deleteUser(user);
-            } else {
-                await signOut();
-            }
+            await deleteUser(user);
             toast({
                 variant: 'success',
                 title: 'Account Deleted',
@@ -116,7 +117,9 @@ export function AppHeader({
             toast({
                 variant: 'destructive',
                 title: 'Account Deletion Failed',
-                description: error.message || 'Unable to delete account.',
+                description: error.code === 'auth/popup-closed-by-user'
+                    ? 'Google confirmation was closed before account deletion.'
+                    : error.message || 'Unable to delete account.',
             });
         } finally {
             setIsAccountActionLoading(false);
