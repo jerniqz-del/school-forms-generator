@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
                 description: `${reload.totalTokens} token(s)${reload.bonusTokens > 0 ? ` including ${reload.bonusTokens} bonus tokens` : ''}.`,
               },
             ],
-            payment_method_types: ['qrph', 'card', 'gcash', 'paymaya', 'grab_pay'],
+            payment_method_types: ['qrph'],
             success_url: `${origin}/?token_payment_status=success`,
             cancel_url: `${origin}/?token_payment_status=cancelled`,
             description: `Token reload for School Forms Generator.`,
