@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { getAdminFieldValue, getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
 import { FREE_SIGNUP_TOKENS, REFERRAL_REWARD_TOKENS } from '@/lib/tokens';
 
@@ -11,6 +12,10 @@ function buildReferralCode(uid: string) {
 
 function getEmailDomain(email?: string | null) {
   return email?.split('@')[1]?.toLowerCase() || null;
+}
+
+function getAccountDeletionRecordId(email: string) {
+  return createHash('sha256').update(email.toLowerCase()).digest('hex');
 }
 
 async function ensureWallet(uid: string, email?: string | null, referralCode?: string | null) {
@@ -73,11 +78,14 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       transaction.set(walletRef, updateData, { merge: true });
       return;
     }
-
-    let tokens = FREE_SIGNUP_TOKENS;
+    const deletionRecordSnap = normalizedEmail
+      ? await transaction.get(db.collection('accountDeletionRecords').doc(getAccountDeletionRecordId(normalizedEmail)))
+      : null;
+    const hadDeletedAccount = Boolean(deletionRecordSnap?.exists);
+    let tokens = hadDeletedAccount ? 0 : FREE_SIGNUP_TOKENS;
     let referredBy: string | null = null;
 
-    if (referralCode) {
+    if (referralCode && !hadDeletedAccount) {
       const referralSnap = await transaction.get(db.collection('referralCodes').doc(referralCode));
       const referrerUid = referralSnap.exists ? referralSnap.data()?.uid : null;
 
@@ -124,6 +132,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       shareableTokens: 0,
       reservedTokens: 0,
       freeSignupTokensGranted: FREE_SIGNUP_TOKENS,
+      welcomeTokensBlockedByPriorDeletion: hadDeletedAccount,
       referralCode: ownReferralCode,
       referredBy,
       lifetimePurchasedTokens: 0,
@@ -137,12 +146,22 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       uid,
       createdAt: FieldValue.serverTimestamp(),
     });
-    transaction.set(db.collection('tokenLedger').doc(), {
-      uid,
-      type: 'signup_bonus',
-      tokens: FREE_SIGNUP_TOKENS,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    if (tokens > 0) {
+      transaction.set(db.collection('tokenLedger').doc(), {
+        uid,
+        type: 'signup_bonus',
+        tokens: FREE_SIGNUP_TOKENS,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } else if (hadDeletedAccount) {
+      transaction.set(db.collection('tokenLedger').doc(), {
+        uid,
+        type: 'signup_bonus_blocked',
+        tokens: 0,
+        reason: 'prior_account_deletion',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
   });
 
   if (normalizedEmail) {

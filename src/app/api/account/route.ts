@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import {
   getAdminFieldValue,
   getAdminFirestore,
@@ -7,6 +8,10 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function getAccountDeletionRecordId(email: string) {
+  return createHash('sha256').update(email.toLowerCase()).digest('hex');
+}
 
 async function deleteQuery(db: any, query: any) {
   while (true) {
@@ -91,6 +96,7 @@ export async function DELETE(request: NextRequest) {
     const uid = decoded.uid;
     const email = decoded.email?.toLowerCase() || null;
     const db = await getAdminFirestore();
+    const FieldValue = await getAdminFieldValue();
     const walletSnap = await db.collection('tokenWallets').doc(uid).get();
     const referralCode = walletSnap.data()?.referralCode;
 
@@ -113,6 +119,19 @@ export async function DELETE(request: NextRequest) {
     batch.delete(db.collection('referralInvites').doc(uid));
     if (referralCode) {
       batch.delete(db.collection('referralCodes').doc(referralCode));
+    }
+    if (email) {
+      batch.set(
+        db.collection('accountDeletionRecords').doc(getAccountDeletionRecordId(email)),
+        {
+          email,
+          lastDeletedUid: uid,
+          welcomeTokensBlocked: true,
+          referralSignupBonusBlocked: true,
+          deletedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
     }
     await batch.commit();
 
