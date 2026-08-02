@@ -168,6 +168,15 @@ type AppState = {
   documentType: PricedDocumentType;
 };
 
+type PaidGenerationTokenLedger = {
+  checkoutSessionId: string;
+  documentType: PricedDocumentType;
+  totalTokens: number;
+  remainingTokens: number;
+  status: 'paid' | 'generated_pending_confirmation';
+  updatedAt: string;
+};
+
 const regions = [
     "Region I", "Region II", "Region III", "Region IV-A", "Region IV-B", "Region V", 
     "Region VI", "Region VII", "Region VIII", "Region IX", "Region X", "Region XI", 
@@ -357,6 +366,7 @@ const DEV_PROMO_CODE = 'DEVPASS';
 const IS_DEVELOPER_PROMO_ENABLED = process.env.NODE_ENV !== 'production';
 const IS_PDF_OUTPUT_ENABLED = false;
 const IS_LIVE_PDF_PREVIEW_ENABLED = false;
+const PAID_GENERATION_TOKENS_STORAGE_KEY = 'paidGenerationTokens';
 
 
 const HistoryBadges = ({
@@ -835,6 +845,7 @@ export default function Home() {
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
   const [isPaymentRecoveryOpen, setIsPaymentRecoveryOpen] = useState(false);
   const [paymentRecoveryError, setPaymentRecoveryError] = useState<string | null>(null);
+  const [paidGenerationNeedsConfirmation, setPaidGenerationNeedsConfirmation] = useState(false);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -969,10 +980,42 @@ export default function Home() {
     try {
       localStorage.removeItem('appState');
       localStorage.removeItem('checkoutSessionId');
+      localStorage.removeItem(PAID_GENERATION_TOKENS_STORAGE_KEY);
     } catch (error) {
         console.error("Could not clear state from localStorage:", error);
     }
   };
+
+  const savePaidGenerationTokens = useCallback((ledger: PaidGenerationTokenLedger) => {
+    try {
+      localStorage.setItem(PAID_GENERATION_TOKENS_STORAGE_KEY, JSON.stringify(ledger));
+    } catch (error) {
+      console.error("Could not save paid generation tokens:", error);
+    }
+  }, []);
+
+  const loadPaidGenerationTokens = useCallback((): PaidGenerationTokenLedger | null => {
+    try {
+      const savedLedger = localStorage.getItem(PAID_GENERATION_TOKENS_STORAGE_KEY);
+      if (!savedLedger) return null;
+
+      const parsed = JSON.parse(savedLedger) as PaidGenerationTokenLedger;
+      if (
+        typeof parsed.checkoutSessionId === 'string' &&
+        typeof parsed.totalTokens === 'number' &&
+        typeof parsed.remainingTokens === 'number' &&
+        (parsed.documentType === 'docx' || parsed.documentType === 'pdf')
+      ) {
+        return {
+          ...parsed,
+          documentType: IS_PDF_OUTPUT_ENABLED && parsed.documentType === 'pdf' ? 'pdf' : 'docx',
+        };
+      }
+    } catch (error) {
+      console.error("Could not load paid generation tokens:", error);
+    }
+    return null;
+  }, []);
   
 const formatNameWithMiddleInitial = (name: string): string => {
     const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
@@ -1117,7 +1160,23 @@ const handleGenerateSF9 = useCallback(async (
             saveAs(zipBlob, currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip");
         }
 
-        clearStateFromLocalStorage();
+        if (options?.showPaymentRecovery) {
+            const checkoutSessionId = localStorage.getItem('checkoutSessionId');
+            if (checkoutSessionId) {
+                savePaidGenerationTokens({
+                    checkoutSessionId,
+                    documentType: currentDocumentType,
+                    totalTokens: totalSelected,
+                    remainingTokens: totalSelected,
+                    status: 'generated_pending_confirmation',
+                    updatedAt: new Date().toISOString(),
+                });
+            }
+            setPaidGenerationNeedsConfirmation(true);
+        } else {
+            clearStateFromLocalStorage();
+            setPaidGenerationNeedsConfirmation(false);
+        }
         setPaymentRecoveryError(null);
         setIsPaymentRecoveryOpen(false);
         setIsPostGenerateDialogOpen(true);
@@ -1147,7 +1206,7 @@ const handleGenerateSF9 = useCallback(async (
     } finally {
         setIsProcessing(false);
     }
-}, [toast]);
+}, [savePaidGenerationTokens, toast]);
 
 
   useEffect(() => {
@@ -1206,6 +1265,14 @@ const handleGenerateSF9 = useCallback(async (
                   title: "Payment Confirmed!",
                   description: "Your file(s) are being generated...",
               });
+              savePaidGenerationTokens({
+                  checkoutSessionId,
+                  documentType: restoredDocumentType,
+                  totalTokens: totalSelected,
+                  remainingTokens: totalSelected,
+                  status: 'paid',
+                  updatedAt: new Date().toISOString(),
+              });
               await handleGenerateSF9(restoredState, false, { showPaymentRecovery: true }); // isPromo is false for regular payment
           } else {
               toast({
@@ -1225,11 +1292,12 @@ const handleGenerateSF9 = useCallback(async (
     };
 
     processPayment();
-  }, [handleGenerateSF9, loadStateFromLocalStorage, toast]);
+  }, [handleGenerateSF9, loadStateFromLocalStorage, savePaidGenerationTokens, toast]);
 
   const handleRetryPaidGeneration = useCallback(async () => {
       const restoredState = loadStateFromLocalStorage();
       const checkoutSessionId = localStorage.getItem('checkoutSessionId');
+      const paidTokens = loadPaidGenerationTokens();
 
       if (!restoredState || !checkoutSessionId) {
           setPaymentRecoveryError('The saved payment session could not be found. Please contact support with your PayMongo receipt.');
@@ -1244,6 +1312,12 @@ const handleGenerateSF9 = useCallback(async (
       const totalSelected = restoredState.filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
       const restoredDocumentType = IS_PDF_OUTPUT_ENABLED && restoredState.documentType === 'pdf' ? 'pdf' : 'docx';
       restoredState.documentType = restoredDocumentType;
+
+      if (!paidTokens || paidTokens.checkoutSessionId !== checkoutSessionId || paidTokens.remainingTokens < totalSelected) {
+          setPaymentRecoveryError('The saved token balance could not cover this generation. Please contact support with your PayMongo receipt.');
+          setIsPaymentRecoveryOpen(true);
+          return;
+      }
 
       setIsPaymentRecoveryOpen(false);
       setLoadingMessage('Rechecking payment before retrying generation...');
@@ -1274,7 +1348,7 @@ const handleGenerateSF9 = useCallback(async (
       } finally {
           setIsProcessing(false);
       }
-  }, [handleGenerateSF9, loadStateFromLocalStorage, toast]);
+  }, [handleGenerateSF9, loadPaidGenerationTokens, loadStateFromLocalStorage, toast]);
 
 
   const fetchTemplates = useCallback(async () => {
@@ -2103,7 +2177,20 @@ const formatPolishedName = (name: string): string => {
 
   const handleGenerateAnother = () => {
     resetState();
+    clearStateFromLocalStorage();
+    setPaidGenerationNeedsConfirmation(false);
     setIsPostGenerateDialogOpen(false);
+  };
+
+  const handleConfirmPaidDownload = () => {
+    clearStateFromLocalStorage();
+    setPaidGenerationNeedsConfirmation(false);
+    setIsPostGenerateDialogOpen(false);
+    toast({
+      variant: 'success',
+      title: 'Tokens Consumed',
+      description: 'Your paid generation has been completed.',
+    });
   };
 
   const SummaryItem = ({ label, value }: { label: string; value?: string | number | ReactNode }) => (
@@ -2202,19 +2289,39 @@ const formatPolishedName = (name: string): string => {
               <DialogHeader>
                 <DialogTitle className="text-center">Generation Successful!</DialogTitle>
                 <DialogDescription className="text-center">
-                  Your document(s) have been downloaded.
-                  <br />
-                  What would you like to do next?
+                  {paidGenerationNeedsConfirmation
+                    ? 'Your document was prepared. Tokens will only be consumed after you confirm the download.'
+                    : 'Your document(s) have been downloaded.'}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="flex-col sm:flex-col sm:space-x-0 items-center gap-2">
-                <Button
-                  type="button"
-                  onClick={handleGenerateAnother}
-                  className="w-full"
-                >
-                  Generate Another
-                </Button>
+                {paidGenerationNeedsConfirmation ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={handleConfirmPaidDownload}
+                      className="w-full"
+                    >
+                      I Downloaded the File
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleRetryPaidGeneration}
+                      className="w-full"
+                    >
+                      Download Again Without Paying
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={handleGenerateAnother}
+                    className="w-full"
+                  >
+                    Generate Another
+                  </Button>
+                )}
                 <a
                   href="https://forms.gle/2pDLGjWxooM6X6dv5"
                   target="_blank"
