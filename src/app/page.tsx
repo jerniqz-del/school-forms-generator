@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, Tag, LogIn } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -73,7 +73,14 @@ import { useUser as useAuthUser } from '@/firebase/auth/use-user';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { DOCUMENT_TYPE_PRICING, PricedDocumentType, calculateGenerationPricing } from '@/lib/pricing';
+import { PricedDocumentType } from '@/lib/pricing';
+import {
+  TOKEN_RELOAD_MIN_PESOS,
+  TOKENS_PER_STUDENT_FORM,
+  calculateAllowableStudentForms,
+  calculateTokenCost,
+  calculateTokenReload,
+} from '@/lib/tokens';
 
 type StudentRecord = {
   LRN: string;
@@ -178,6 +185,12 @@ type PaidGenerationTokenLedger = {
   remainingTokens: number;
   status: 'paid' | 'generated_pending_confirmation';
   updatedAt: string;
+};
+
+type TokenWallet = {
+  tokens: number;
+  reservedTokens: number;
+  referralCode: string;
 };
 
 const regions = [
@@ -849,6 +862,13 @@ export default function Home() {
   const [isPaymentRecoveryOpen, setIsPaymentRecoveryOpen] = useState(false);
   const [paymentRecoveryError, setPaymentRecoveryError] = useState<string | null>(null);
   const [paidGenerationNeedsConfirmation, setPaidGenerationNeedsConfirmation] = useState(false);
+  const [tokenWallet, setTokenWallet] = useState<TokenWallet | null>(null);
+  const [isTokenReloadOpen, setIsTokenReloadOpen] = useState(false);
+  const [isTokenShareOpen, setIsTokenShareOpen] = useState(false);
+  const [reloadAmountPesos, setReloadAmountPesos] = useState(TOKEN_RELOAD_MIN_PESOS);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareTokenAmount, setShareTokenAmount] = useState(5);
+  const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -865,6 +885,52 @@ export default function Home() {
   const { toast } = useToast();
   const { user: authUser, isUserLoading } = useFirebaseUser();
   const { signInWithGoogle } = useAuthUser();
+
+  const getAuthHeaders = useCallback(async () => {
+    if (!authUser) {
+      throw new Error('Sign in is required.');
+    }
+    const token = await authUser.getIdToken();
+    return { Authorization: `Bearer ${token}` };
+  }, [authUser]);
+
+  const refreshTokenWallet = useCallback(async (referralCode?: string) => {
+    if (!authUser) {
+      setTokenWallet(null);
+      return null;
+    }
+
+    const headers = await getAuthHeaders();
+    const response = await fetch('/api/tokens/wallet', {
+      method: referralCode ? 'POST' : 'GET',
+      headers: referralCode
+        ? { ...headers, 'Content-Type': 'application/json' }
+        : headers,
+      body: referralCode ? JSON.stringify({ referralCode }) : undefined,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to load token wallet.');
+    }
+    setTokenWallet(data.wallet);
+    return data.wallet as TokenWallet;
+  }, [authUser, getAuthHeaders]);
+
+  useEffect(() => {
+    if (!authUser) {
+      setTokenWallet(null);
+      return;
+    }
+
+    const referralCode = new URLSearchParams(window.location.search).get('ref');
+    refreshTokenWallet(referralCode || undefined).catch(error => {
+      toast({
+        variant: 'destructive',
+        title: 'Token Wallet Error',
+        description: error.message || 'Could not load your token wallet.',
+      });
+    });
+  }, [authUser, refreshTokenWallet, toast]);
   
   useEffect(() => {
     try {
@@ -1221,10 +1287,63 @@ const handleGenerateSF9 = useCallback(async (
     const processPayment = async () => {
       const currentSearchParams = new URLSearchParams(window.location.search);
       const paymentStatus = currentSearchParams.get('payment_status');
+      const tokenPaymentStatus = currentSearchParams.get('token_payment_status');
 
-      if (!paymentStatus) return;
+      if (!paymentStatus && !tokenPaymentStatus) return;
       
       window.history.replaceState({}, document.title, window.location.pathname);
+
+      if (tokenPaymentStatus === 'success') {
+          const checkoutSessionId = localStorage.getItem('tokenReloadCheckoutSessionId');
+          if (!checkoutSessionId) {
+              toast({
+                  variant: 'destructive',
+                  title: 'Token Reload Verification Failed',
+                  description: 'Could not find the token reload checkout session.',
+              });
+              return;
+          }
+
+          try {
+              setLoadingMessage('Verifying token reload...');
+              setIsProcessing(true);
+              const headers = await getAuthHeaders();
+              const verifyResponse = await fetch('/api/tokens/verify-reload', {
+                  method: 'POST',
+                  headers: { ...headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ checkoutSessionId }),
+              });
+              const verifyData = await verifyResponse.json().catch(() => null);
+              if (!verifyResponse.ok) {
+                  throw new Error(verifyData?.error || 'Could not verify token reload payment.');
+              }
+
+              localStorage.removeItem('tokenReloadCheckoutSessionId');
+              await refreshTokenWallet();
+              toast({
+                  variant: 'success',
+                  title: 'Tokens Reloaded',
+                  description: `${verifyData.tokens} token(s) added to your account.`,
+              });
+          } catch (error: any) {
+              toast({
+                  variant: 'destructive',
+                  title: 'Token Reload Failed',
+                  description: error.message || 'Could not reload tokens.',
+              });
+          } finally {
+              setIsProcessing(false);
+          }
+          return;
+      } else if (tokenPaymentStatus === 'cancelled') {
+          localStorage.removeItem('tokenReloadCheckoutSessionId');
+          toast({
+              variant: 'destructive',
+              title: 'Token Reload Cancelled',
+              description: 'Your token reload payment was cancelled.',
+          });
+          return;
+      }
 
       if (paymentStatus === 'success') {
           const restoredState = loadStateFromLocalStorage();
@@ -1299,7 +1418,7 @@ const handleGenerateSF9 = useCallback(async (
     };
 
     processPayment();
-  }, [authUser?.uid, handleGenerateSF9, loadStateFromLocalStorage, savePaidGenerationTokens, toast]);
+  }, [authUser?.uid, getAuthHeaders, handleGenerateSF9, loadStateFromLocalStorage, refreshTokenWallet, savePaidGenerationTokens, toast]);
 
   const handleRetryPaidGeneration = useCallback(async () => {
       const restoredState = loadStateFromLocalStorage();
@@ -1792,6 +1911,8 @@ const formatPolishedName = (name: string): string => {
 
   const handlePaymentAndGenerate = async () => {
     const totalSelected = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+    const requiredTokens = calculateTokenCost(totalSelected);
+    const availableTokens = tokenWallet?.tokens || 0;
 
     if (totalSelected === 0) {
       toast({
@@ -1810,6 +1931,18 @@ const formatPolishedName = (name: string): string => {
         description: 'Please select a template for each grade level, and fill all required shared info fields.',
       });
       setIsPurchaseConfirmationOpen(false);
+      return;
+    }
+
+    if (availableTokens < requiredTokens) {
+      const allowableForms = calculateAllowableStudentForms(availableTokens);
+      toast({
+        variant: 'destructive',
+        title: 'Insufficient Tokens',
+        description: `You need ${requiredTokens} tokens for ${totalSelected} student form(s). You can generate up to ${allowableForms} student form(s), reduce your selection, or reload tokens.`,
+      });
+      setIsPurchaseConfirmationOpen(false);
+      setIsTokenReloadOpen(true);
       return;
     }
     updatePreviousInfo();
@@ -1838,38 +1971,35 @@ const formatPolishedName = (name: string): string => {
             return;
         }
 
-        saveStateToLocalStorage();
-
-        const response = await fetch('/api/create-checkout', {
+        const headers = await getAuthHeaders();
+        const reservationResponse = await fetch('/api/tokens/generation', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ studentCount: totalSelected, documentType }),
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reserve', studentCount: totalSelected }),
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to create payment session.');
+        const reservationData = await reservationResponse.json().catch(() => null);
+        if (!reservationResponse.ok) {
+            throw new Error(reservationData?.error || 'Failed to reserve generation tokens.');
         }
 
-        const { url, checkoutSessionId } = await response.json();
-        if (url && checkoutSessionId) {
-            localStorage.setItem('checkoutSessionId', checkoutSessionId);
-            setCheckoutUrl(url);
-            setIsPurchaseConfirmationOpen(false);
-            setIsCheckoutDialogOpen(true);
+        setActiveReservationId(reservationData.reservationId);
+        setIsPurchaseConfirmationOpen(false);
 
-            try {
-                const win = window.open(url, '_blank');
-                if (win) {
-                    win.focus();
-                }
-            } catch (err) {
-                console.error('Failed to auto-open popup:', err);
-            }
-            return; 
-        } else {
-            throw new Error('Checkout URL or session ID not provided.');
+        const generated = await handleGenerateSF9(generationState, false, { showPaymentRecovery: true });
+        if (!generated) {
+            await fetch('/api/tokens/generation', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'release', reservationId: reservationData.reservationId }),
+            }).catch(() => null);
+            setActiveReservationId(null);
+            await refreshTokenWallet().catch(() => null);
+            return;
         }
+
+        await refreshTokenWallet().catch(() => null);
+        return;
         
     } catch (error: any) {
       console.error('Generation or Payment failed:', error);
@@ -1878,9 +2008,62 @@ const formatPolishedName = (name: string): string => {
         title: 'Error',
         description: error.message || 'Could not complete the process.',
       });
-      clearStateFromLocalStorage();
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleTokenReload = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/tokens/reload-checkout', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountPesos: reloadAmountPesos }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Could not create token reload checkout.');
+      }
+      localStorage.setItem('tokenReloadCheckoutSessionId', data.checkoutSessionId);
+      setIsTokenReloadOpen(false);
+      window.open(data.url, '_blank')?.focus();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Token Reload Failed',
+        description: error.message || 'Could not reload tokens.',
+      });
+    }
+  };
+
+  const handleShareTokens = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/tokens/share', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientEmail: shareEmail, tokens: shareTokenAmount }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Could not share tokens.');
+      }
+      setShareEmail('');
+      setShareTokenAmount(5);
+      setIsTokenShareOpen(false);
+      await refreshTokenWallet();
+      toast({
+        variant: 'success',
+        title: 'Tokens Shared',
+        description: `${shareTokenAmount} token(s) reserved for ${shareEmail}.`,
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Token Sharing Failed',
+        description: error.message || 'Could not share tokens.',
+      });
     }
   };
 
@@ -2165,15 +2348,10 @@ const formatPolishedName = (name: string): string => {
 
   const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
-  
-  const pricing = calculateGenerationPricing(totalSelectedStudents, documentType);
-  const documentTypeLabel = DOCUMENT_TYPE_PRICING[documentType].label;
-  const rawTotal = pricing.rawTotal;
-  const autoDiscountPercent = pricing.discountPercent;
-  const autoDiscountAmount = pricing.discountAmount;
-  const subtotalAfterDiscount = pricing.subtotalAfterDiscount;
-  const isUnderMinimum = pricing.isUnderMinimum;
-  const finalAmountToPay = pricing.finalAmount;
+  const availableTokens = tokenWallet?.tokens || 0;
+  const requiredTokens = calculateTokenCost(totalSelectedStudents);
+  const allowableStudentForms = calculateAllowableStudentForms(availableTokens);
+  const reloadPreview = calculateTokenReload(reloadAmountPesos);
   
   const isActionDisabled = isProcessing || totalSelectedStudents === 0 || 
     !sharedInfo.school ||
@@ -2194,15 +2372,38 @@ const formatPolishedName = (name: string): string => {
     setIsPostGenerateDialogOpen(false);
   };
 
-  const handleConfirmPaidDownload = () => {
-    clearStateFromLocalStorage();
-    setPaidGenerationNeedsConfirmation(false);
-    setIsPostGenerateDialogOpen(false);
-    toast({
-      variant: 'success',
-      title: 'Tokens Consumed',
-      description: 'Your paid generation has been completed.',
-    });
+  const handleConfirmPaidDownload = async () => {
+    try {
+      if (activeReservationId) {
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/tokens/generation', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'consume', reservationId: activeReservationId }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.error || 'Could not consume reserved tokens.');
+        }
+      }
+
+      clearStateFromLocalStorage();
+      setActiveReservationId(null);
+      setPaidGenerationNeedsConfirmation(false);
+      setIsPostGenerateDialogOpen(false);
+      await refreshTokenWallet().catch(() => null);
+      toast({
+        variant: 'success',
+        title: 'Tokens Consumed',
+        description: 'Your generation has been completed.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Token Confirmation Failed',
+        description: error.message || 'Could not confirm token usage.',
+      });
+    }
   };
 
   const SummaryItem = ({ label, value }: { label: string; value?: string | number | ReactNode }) => (
@@ -2215,7 +2416,7 @@ const formatPolishedName = (name: string): string => {
 
   return (
     <TooltipProvider>
-      {hasMounted && <AppHeader />}
+      {hasMounted && <AppHeader availableTokens={tokenWallet?.tokens ?? null} />}
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
 
@@ -2232,7 +2433,7 @@ const formatPolishedName = (name: string): string => {
                 </div>
                 <DialogTitle className="text-center">Sign In Required</DialogTitle>
                 <DialogDescription className="text-center">
-                  Sign in with Google before using the SF9 Generator. Your account keeps paid generation tokens connected to you.
+                  Sign in with Google before using School Forms Generator. Your account keeps paid generation tokens connected to you.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -2248,6 +2449,45 @@ const formatPolishedName = (name: string): string => {
             </DialogContent>
         </Dialog>
         
+        {authUser && (
+          <div className="rounded-xl border bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Coins className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Available Tokens</p>
+                  <p className="text-xl font-semibold">{availableTokens}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setIsTokenReloadOpen(true)}>
+                  <Coins className="mr-2 size-4" />
+                  Reload
+                </Button>
+                <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>
+                  <Share2 className="mr-2 size-4" />
+                  Share
+                </Button>
+                {tokenWallet?.referralCode && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
+                      navigator.clipboard?.writeText(url);
+                      toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another user to earn reward tokens.' });
+                    }}
+                  >
+                    <Gift className="mr-2 size-4" />
+                    Copy Referral Link
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <AlertDialog open={isDisclaimerOpen} onOpenChange={setIsDisclaimerOpen}>
             <AlertDialogContent className="max-w-3xl">
                 <AlertDialogHeader>
@@ -2255,7 +2495,7 @@ const formatPolishedName = (name: string): string => {
                 </AlertDialogHeader>
                 <ScrollArea className="max-h-[60vh] pr-6">
                     <div className="space-y-4 text-sm text-muted-foreground">
-                        <p>Please read this disclaimer carefully before using the SF9 Maker (the "Service").</p>
+                        <p>Please read these terms carefully before using School Forms Generator (the "Service").</p>
                         <p>By clicking "Agree" or by using this Service, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined below.</p>
                         
                         <h3 className="font-semibold text-foreground">1. No Official Affiliation</h3>
@@ -2264,9 +2504,10 @@ const formatPolishedName = (name: string): string => {
                         <h3 className="font-semibold text-foreground">2. Data Privacy & Security</h3>
                         <p>We have designed this app with your privacy as the highest priority.</p>
                         <ul className="list-disc pl-5 space-y-2">
-                            <li><span className="font-semibold">100% Client-Side Processing:</span> This app is designed to be 100% client-side. Your School Form 1 (SF1) file and all the sensitive student data it contains (names, LRNs, grades, etc.) NEVER leave your computer.</li>
+                            <li><span className="font-semibold">Client-Side Document Processing:</span> Your School Form 1 (SF1) file and the sensitive student data it contains are processed in your browser for document generation.</li>
                             <li><span className="font-semibold">No Data Upload or Storage:</span> The file is read directly by your web browser, and the School Form 9 (SF9) is generated locally on your device. No student data is ever uploaded, sent to, or stored on our servers.</li>
-                            <li><span className="font-semibold">Secure Payment:</span> For payment processing, only a non-sensitive, anonymous count of students (e.g., "25") is sent to our server to calculate the price. No personal or sensitive information is ever transmitted during this process.</li>
+                            <li><span className="font-semibold">Accounts and Tokens:</span> Google sign-in is used to connect token balances, reloads, referrals, sharing activity, and generation reservations to your account.</li>
+                            <li><span className="font-semibold">Secure Payment:</span> PayMongo is used only for token reload payments. Student names, LRNs, and generated documents are not sent to PayMongo.</li>
                         </ul>
 
                         <h3 className="font-semibold text-foreground">3. Accuracy and Liability</h3>
@@ -2277,8 +2518,9 @@ const formatPolishedName = (name: string): string => {
                             <li><span className="font-semibold">Limitation of Liability:</span> The developer shall not be held liable for any damages (direct, indirect, or consequential) arising from the use or inability to use this Service. This includes, but is not to be limited to, damages from inaccurate calculations, file generation errors, or any reliance on this tool for official submissions.</li>
                         </ul>
 
-                        <h3 className="font-semibold text-foreground">4. Payments and Refunds</h3>
-                        <p>Payment is for the one-time computational service of generating the file(s). Due to the nature of this digital service and the fact that we do not store your files or data, all transactions are final and non-refundable.</p>
+                        <h3 className="font-semibold text-foreground">4. Tokens, Payments, Referrals, and Sharing</h3>
+                        <p>Each selected student form generation consumes tokens. New registered users receive a free starting balance. Additional tokens may be reloaded through PayMongo, may include promotional bonus tokens, may be rewarded through referrals, and may be shared with other users when the feature is available.</p>
+                        <p>Tokens are reserved before generation and consumed only after you confirm that the file was downloaded. Failed generation attempts release reserved tokens. Token reload payments are final once credited to your account.</p>
 
                         <p className="font-bold">By using this app, you agree to these terms and accept full responsibility for the use and verification of all generated data.</p>
                     </div>
@@ -2348,7 +2590,14 @@ const formatPolishedName = (name: string): string => {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={handleRetryPaidGeneration}
+                      onClick={() => handleGenerateSF9({
+                        filesData,
+                        sharedInfo,
+                        croppedLogo,
+                        selectedTemplateUrls,
+                        useMiddleInitial,
+                        documentType,
+                      }, false, { showPaymentRecovery: true })}
                       className="w-full"
                     >
                       Download Again Without Paying
@@ -2390,7 +2639,9 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label="Total Files" value={filesData.length} />
                 <SummaryItem label="Total Selected Students" value={totalSelectedStudents} />
                 <SummaryItem label="Paper Size" value={paperSize} />
-                <SummaryItem label="Document Type" value={`${documentTypeLabel} - PHP ${pricing.ratePerStudent.toFixed(2)} per student`} />
+                <SummaryItem label="Document Type" value="DOCX" />
+                <SummaryItem label="Required Tokens" value={`${requiredTokens} tokens (${TOKENS_PER_STUDENT_FORM} per student form)`} />
+                <SummaryItem label="Available Tokens" value={`${availableTokens} tokens`} />
                 <SummaryItem label="School Name" value={sharedInfo.school} />
                 <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
                 <SummaryItem label="School Head Designation" value={sharedInfo.schoolHeadDesignation} />
@@ -2425,7 +2676,7 @@ const formatPolishedName = (name: string): string => {
         <AlertDialog open={isPurchaseConfirmationOpen} onOpenChange={setIsPurchaseConfirmationOpen}>
             <AlertDialogContent className="sm:max-w-lg">
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Confirm Purchase</AlertDialogTitle>
+                    <AlertDialogTitle>Confirm Generation</AlertDialogTitle>
                     {isPromoApplied ? (
                       <AlertDialogDescription>
                         Developer pass applied. You can generate the file(s) for free.
@@ -2433,43 +2684,26 @@ const formatPolishedName = (name: string): string => {
                     ) : (
                       <div className="space-y-3 pt-1">
                         <AlertDialogDescription>
-                          Review your order summary before proceeding to payment.
+                          Review token usage before generating your file.
                         </AlertDialogDescription>
 
                         <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Document Type:</span>
-                            <span className="font-semibold text-foreground">{documentTypeLabel}</span>
+                            <span className="font-semibold text-foreground">DOCX</span>
                           </div>
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Selected Students:</span>
-                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) x PHP {pricing.ratePerStudent.toFixed(2)}</span>
+                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) x {TOKENS_PER_STUDENT_FORM} tokens</span>
                           </div>
                           <div className="flex justify-between items-center text-muted-foreground">
-                            <span>Base Rate Total:</span>
-                            <span className="font-medium text-foreground">₱{rawTotal.toFixed(2)}</span>
+                            <span>Available Tokens:</span>
+                            <span className="font-medium text-foreground">{availableTokens}</span>
                           </div>
 
-                          {autoDiscountPercent > 0 && (
-                            <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-medium">
-                              <span className="flex items-center gap-1">
-                                <Tag className="size-3" />
-                                {autoDiscountPercent}% Volume Discount:
-                              </span>
-                              <span>-₱{autoDiscountAmount.toFixed(2)}</span>
-                            </div>
-                          )}
-
-                          {autoDiscountPercent > 0 && (
-                            <div className="flex justify-between items-center text-muted-foreground pt-1 border-t">
-                              <span>Subtotal after discount:</span>
-                              <span className="font-medium text-foreground">₱{subtotalAfterDiscount.toFixed(2)}</span>
-                            </div>
-                          )}
-
                           <div className="flex justify-between items-center pt-2 border-t font-semibold text-sm text-foreground">
-                            <span>Total Payable Amount:</span>
-                            <span className="text-primary text-base">₱{finalAmountToPay.toFixed(2)}</span>
+                            <span>Required Tokens:</span>
+                            <span className="text-primary text-base">{requiredTokens}</span>
                           </div>
                         </div>
                       </div>
@@ -2478,33 +2712,24 @@ const formatPolishedName = (name: string): string => {
 
                 {!isPromoApplied && (
                     <div className="space-y-3">
-                        {isUnderMinimum && (
+                        {availableTokens < requiredTokens && (
                             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200 space-y-1 text-xs">
                                 <div className="flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
                                     <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                                    <span>Minimum Amount Notice</span>
+                                    <span>Insufficient Tokens</span>
                                 </div>
                                 <p className="text-[11px] leading-relaxed opacity-90">
-                                    The minimum total amount per generation is <strong>₱20.00</strong>. Since your calculated total is <strong>₱{subtotalAfterDiscount.toFixed(2)}</strong>, a minimum charge of <strong>₱20.00</strong> will be applied at checkout.
+                                    You can currently generate up to <strong>{allowableStudentForms}</strong> student form(s). Reload tokens or reduce your selected students.
                                 </p>
                             </div>
                         )}
 
-                        {autoDiscountPercent > 0 ? (
-                            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                                <Tag className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                <span>
-                                    <strong>{autoDiscountPercent}% Bulk Discount Applied!</strong> ({rawTotal >= 100 ? 'Order ₱100.00 or more' : 'Order between ₱50.00 and ₱100.00'}).
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
-                                <Percent className="size-3.5 shrink-0 text-primary" />
-                                <span>
-                                    <strong>Bulk Promo Discount:</strong> Save <strong>5%</strong> on orders ₱50.00 and up, and <strong>10%</strong> on orders ₱100.00 and up!
-                                </span>
-                            </div>
-                        )}
+                        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5 text-[11px] text-muted-foreground flex items-center gap-2">
+                            <Percent className="size-3.5 shrink-0 text-primary" />
+                            <span>
+                                <strong>Token Reload Bonus:</strong> Reload more than PHP 100.00 and receive <strong>5%</strong> additional tokens.
+                            </span>
+                        </div>
                     </div>
                 )}
 
@@ -2533,9 +2758,15 @@ const formatPolishedName = (name: string): string => {
                 )}
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handlePaymentAndGenerate}>
-                      {isPromoApplied ? 'Generate for Free' : 'Proceed to Payment'}
-                    </AlertDialogAction>
+                    {availableTokens < requiredTokens && !isPromoApplied ? (
+                      <Button onClick={() => { setIsPurchaseConfirmationOpen(false); setIsTokenReloadOpen(true); }}>
+                        Reload Tokens
+                      </Button>
+                    ) : (
+                      <AlertDialogAction onClick={handlePaymentAndGenerate}>
+                        {isPromoApplied ? 'Generate for Free' : 'Generate with Tokens'}
+                      </AlertDialogAction>
+                    )}
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
@@ -2567,6 +2798,80 @@ const formatPolishedName = (name: string): string => {
                     <Button variant="outline" onClick={() => setIsCheckoutDialogOpen(false)}>
                         Close
                     </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isTokenReloadOpen} onOpenChange={setIsTokenReloadOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Coins className="size-5 text-primary" />
+                        Reload Tokens
+                    </DialogTitle>
+                    <DialogDescription>
+                        Minimum reload is PHP {TOKEN_RELOAD_MIN_PESOS}. PHP 20 gives 50 tokens. Reload more than PHP 100 to receive 5% bonus tokens.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="reload-amount">Amount in pesos</Label>
+                        <Input
+                            id="reload-amount"
+                            type="number"
+                            min={TOKEN_RELOAD_MIN_PESOS}
+                            value={reloadAmountPesos}
+                            onChange={(event) => setReloadAmountPesos(Number(event.target.value))}
+                        />
+                    </div>
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                        <div className="flex justify-between">
+                            <span>Base tokens</span>
+                            <span className="font-semibold">{reloadPreview.baseTokens}</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-600">
+                            <span>Bonus tokens</span>
+                            <span className="font-semibold">+{reloadPreview.bonusTokens}</span>
+                        </div>
+                        <div className="mt-2 flex justify-between border-t pt-2 font-semibold">
+                            <span>Total tokens</span>
+                            <span>{reloadPreview.totalTokens}</span>
+                        </div>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsTokenReloadOpen(false)}>Cancel</Button>
+                    <Button onClick={handleTokenReload}>Proceed to PayMongo</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isTokenShareOpen} onOpenChange={setIsTokenShareOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Share2 className="size-5 text-primary" />
+                        Share Tokens
+                    </DialogTitle>
+                    <DialogDescription>
+                        Share tokens with another registered user by email.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <Input
+                        placeholder="Recipient email"
+                        value={shareEmail}
+                        onChange={(event) => setShareEmail(event.target.value)}
+                    />
+                    <Input
+                        type="number"
+                        min={1}
+                        value={shareTokenAmount}
+                        onChange={(event) => setShareTokenAmount(Number(event.target.value))}
+                    />
+                </div>
+                <DialogFooter>
+                    <Button onClick={handleShareTokens}>Share Tokens</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

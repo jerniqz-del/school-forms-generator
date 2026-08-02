@@ -15,7 +15,7 @@ import {
 import { useUser } from "@/firebase/auth/use-user";
 import { LogIn, LogOut, UserCircle } from "lucide-react";
 
-export function AppHeader() {
+export function AppHeader({ availableTokens }: { availableTokens?: number | null }) {
     const { user, isUserLoading, signInWithGoogle, signOut } = useUser();
     const fallback = user?.displayName
         ?.split(' ')
@@ -29,12 +29,17 @@ export function AppHeader() {
             <div className="container flex h-16 items-center space-x-4 sm:justify-between sm:space-x-0">
                 <div className="flex gap-6 md:gap-10">
                     <a href="/" className="flex items-center space-x-2">
-                         <span className="inline-block font-bold">SF9 Generator</span>
+                         <span className="inline-block font-bold">School Forms Generator</span>
                     </a>
                 </div>
 
                 <div className="flex flex-1 items-center justify-end space-x-4">
                     <nav className="flex items-center space-x-1">
+                        {typeof availableTokens === 'number' && (
+                            <div className="rounded-full border bg-muted/40 px-3 py-1 text-sm font-semibold">
+                                {availableTokens} tokens
+                            </div>
+                        )}
                         <ThemeToggle />
                         {user ? (
                             <DropdownMenu>
