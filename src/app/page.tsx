@@ -2424,6 +2424,7 @@ const formatPolishedName = (name: string): string => {
 
   const handleConfirmPaidDownload = async () => {
     try {
+      let rewardTokens = 0;
       if (activeReservationId) {
         const headers = await getAuthHeaders();
         const response = await fetch('/api/tokens/generation', {
@@ -2435,6 +2436,7 @@ const formatPolishedName = (name: string): string => {
         if (!response.ok) {
           throw new Error(data?.error || 'Could not consume reserved tokens.');
         }
+        rewardTokens = Number(data?.rewardTokens || 0);
       }
 
       clearStateFromLocalStorage();
@@ -2444,8 +2446,10 @@ const formatPolishedName = (name: string): string => {
       await refreshTokenWallet().catch(() => null);
       toast({
         variant: 'success',
-        title: 'Tokens Consumed',
-        description: 'Your generation has been completed.',
+        title: rewardTokens > 0 ? 'Generation Reward Added' : 'Tokens Consumed',
+        description: rewardTokens > 0
+          ? `Your generation has been completed. ${rewardTokens} bonus token(s) were added.`
+          : 'Your generation has been completed.',
       });
     } catch (error: any) {
       toast({
@@ -2569,7 +2573,7 @@ const formatPolishedName = (name: string): string => {
                         </ul>
 
                         <h3 className="font-semibold text-foreground">4. Tokens, Payments, Referrals, and Sharing</h3>
-                        <p>Each selected student form generation consumes tokens. New registered users receive a free starting balance. Additional tokens may be reloaded through PayMongo, may include promotional bonus tokens, may be rewarded through referrals, and may be shared with other users when the feature is available.</p>
+                        <p>Each selected student form generation consumes tokens. New registered users receive a free starting balance. Additional tokens may be reloaded through PayMongo, may include promotional bonus tokens, may be rewarded through referrals or generation milestones, and may be shared with other users when eligible.</p>
                         <p>Tokens are reserved before generation and consumed only after you confirm that the file was downloaded. Failed generation attempts release reserved tokens. Token reload payments are final once credited to your account.</p>
 
                         <p className="font-bold">By using this app, you agree to these terms and accept full responsibility for the use and verification of all generated data.</p>

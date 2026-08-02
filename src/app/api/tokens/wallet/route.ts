@@ -110,6 +110,8 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       referredBy,
       lifetimePurchasedTokens: 0,
       lifetimeReferralRewards: referredBy ? REFERRAL_REWARD_TOKENS : 0,
+      lifetimeGenerationRewards: 0,
+      completedGenerations: 0,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
-import { calculateTokenCost } from '@/lib/tokens';
+import { GENERATION_REWARD_INTERVAL, GENERATION_REWARD_TOKENS, calculateTokenCost } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       }
 
       const reservationRef = db.collection('tokenReservations').doc(reservationId);
+      let rewardTokens = 0;
       await db.runTransaction(async transaction => {
         const reservationSnap = await transaction.get(reservationRef);
         if (!reservationSnap.exists) throw new Error('Token reservation not found.');
@@ -70,9 +71,21 @@ export async function POST(request: NextRequest) {
             updatedAt: FieldValue.serverTimestamp(),
           });
         } else {
+          const walletSnap = await transaction.get(walletRef);
+          const wallet = walletSnap.data() || {};
+          const studentCount = Number(reservation.studentCount || 0);
+          const previousGenerations = Number(wallet.completedGenerations || 0);
+          const nextGenerations = previousGenerations + studentCount;
+          const previousMilestones = Math.floor(previousGenerations / GENERATION_REWARD_INTERVAL);
+          const nextMilestones = Math.floor(nextGenerations / GENERATION_REWARD_INTERVAL);
+          rewardTokens = Math.max(0, nextMilestones - previousMilestones) * GENERATION_REWARD_TOKENS;
+
           transaction.update(walletRef, {
+            tokens: FieldValue.increment(rewardTokens),
             reservedTokens: FieldValue.increment(-tokens),
             spentTokens: FieldValue.increment(tokens),
+            completedGenerations: FieldValue.increment(studentCount),
+            lifetimeGenerationRewards: FieldValue.increment(rewardTokens),
             updatedAt: FieldValue.serverTimestamp(),
           });
           transaction.set(db.collection('tokenLedger').doc(), {
@@ -83,6 +96,17 @@ export async function POST(request: NextRequest) {
             studentCount: reservation.studentCount,
             createdAt: FieldValue.serverTimestamp(),
           });
+          if (rewardTokens > 0) {
+            transaction.set(db.collection('tokenLedger').doc(), {
+              uid,
+              type: 'generation_reward',
+              reservationId,
+              tokens: rewardTokens,
+              studentCount,
+              completedGenerations: nextGenerations,
+              createdAt: FieldValue.serverTimestamp(),
+            });
+          }
         }
 
         transaction.update(reservationRef, {
@@ -91,7 +115,7 @@ export async function POST(request: NextRequest) {
         });
       });
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, rewardTokens });
     }
 
     return NextResponse.json({ error: 'Invalid token action.' }, { status: 400 });
