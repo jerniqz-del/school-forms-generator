@@ -3653,7 +3653,7 @@ const formatPolishedName = (name: string): string => {
                                 </div>
                                 <div className="flex items-center justify-between rounded-lg border bg-background p-4 text-sm">
                                     <span className="font-semibold">DOCX</span>
-                                    <span className="text-xs text-muted-foreground">PHP 3.50/student</span>
+                                    <span className="text-xs text-muted-foreground">{TOKENS_PER_STUDENT_FORM} tokens/student</span>
                                 </div>
                             </div>
                              {uniqueGradeLevels.length > 0 ? (
