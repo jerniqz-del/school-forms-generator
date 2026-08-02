@@ -14,9 +14,40 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
 
   await db.runTransaction(async transaction => {
     const walletSnap = await transaction.get(walletRef);
-    if (walletSnap.exists) return;
-
     const ownReferralCode = buildReferralCode(uid);
+
+    if (walletSnap.exists) {
+      const wallet = walletSnap.data() || {};
+      const grantedSignupTokens = Number(wallet.freeSignupTokensGranted || 0);
+      const missingSignupTokens = Math.max(0, FREE_SIGNUP_TOKENS - grantedSignupTokens);
+      const updateData: Record<string, any> = {
+        email: normalizedEmail,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (missingSignupTokens > 0) {
+        updateData.tokens = FieldValue.increment(missingSignupTokens);
+        updateData.freeSignupTokensGranted = FREE_SIGNUP_TOKENS;
+        transaction.set(db.collection('tokenLedger').doc(), {
+          uid,
+          type: 'signup_bonus',
+          tokens: missingSignupTokens,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (!wallet.referralCode) {
+        updateData.referralCode = ownReferralCode;
+        transaction.set(db.collection('referralCodes').doc(ownReferralCode), {
+          uid,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      transaction.set(walletRef, updateData, { merge: true });
+      return;
+    }
+
     let tokens = FREE_SIGNUP_TOKENS;
     let referredBy: string | null = null;
 
