@@ -2077,7 +2077,7 @@ const formatPolishedName = (name: string): string => {
       localStorage.setItem('tokenReloadCheckoutSessionId', data.checkoutSessionId);
       localStorage.setItem('tokenReloadNeedsVerification', 'true');
       setIsTokenReloadOpen(false);
-      window.open(data.url, '_blank')?.focus();
+      window.location.assign(data.url);
     } catch (error: any) {
       toast({
         variant: 'destructive',

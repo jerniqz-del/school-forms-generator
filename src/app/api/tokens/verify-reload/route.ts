@@ -4,7 +4,7 @@ import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PAYMONGO_API_URL = 'https://api.paymongo.com/v2/checkout_sessions';
+const PAYMONGO_API_URL = 'https://api.paymongo.com/v1/checkout_sessions';
 
 export async function POST(request: NextRequest) {
   try {
