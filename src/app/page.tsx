@@ -68,6 +68,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { AppHeader } from '@/app/app-header';
 import { useDisclaimer } from '@/app/(main)/disclaimer-context';
+import { useUser as useFirebaseUser } from '@/firebase/provider';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -170,6 +171,7 @@ type AppState = {
 
 type PaidGenerationTokenLedger = {
   checkoutSessionId: string;
+  userId: string | null;
   documentType: PricedDocumentType;
   totalTokens: number;
   remainingTokens: number;
@@ -860,6 +862,7 @@ export default function Home() {
   const [useMiddleInitial, setUseMiddleInitial] = useState(true);
 
   const { toast } = useToast();
+  const { user: authUser } = useFirebaseUser();
   
   useEffect(() => {
     try {
@@ -1163,8 +1166,9 @@ const handleGenerateSF9 = useCallback(async (
         if (options?.showPaymentRecovery) {
             const checkoutSessionId = localStorage.getItem('checkoutSessionId');
             if (checkoutSessionId) {
-                savePaidGenerationTokens({
+              savePaidGenerationTokens({
                     checkoutSessionId,
+                    userId: authUser?.uid || null,
                     documentType: currentDocumentType,
                     totalTokens: totalSelected,
                     remainingTokens: totalSelected,
@@ -1206,7 +1210,7 @@ const handleGenerateSF9 = useCallback(async (
     } finally {
         setIsProcessing(false);
     }
-}, [savePaidGenerationTokens, toast]);
+}, [authUser?.uid, savePaidGenerationTokens, toast]);
 
 
   useEffect(() => {
@@ -1267,6 +1271,7 @@ const handleGenerateSF9 = useCallback(async (
               });
               savePaidGenerationTokens({
                   checkoutSessionId,
+                  userId: authUser?.uid || null,
                   documentType: restoredDocumentType,
                   totalTokens: totalSelected,
                   remainingTokens: totalSelected,
@@ -1292,7 +1297,7 @@ const handleGenerateSF9 = useCallback(async (
     };
 
     processPayment();
-  }, [handleGenerateSF9, loadStateFromLocalStorage, savePaidGenerationTokens, toast]);
+  }, [authUser?.uid, handleGenerateSF9, loadStateFromLocalStorage, savePaidGenerationTokens, toast]);
 
   const handleRetryPaidGeneration = useCallback(async () => {
       const restoredState = loadStateFromLocalStorage();
@@ -1313,7 +1318,12 @@ const handleGenerateSF9 = useCallback(async (
       const restoredDocumentType = IS_PDF_OUTPUT_ENABLED && restoredState.documentType === 'pdf' ? 'pdf' : 'docx';
       restoredState.documentType = restoredDocumentType;
 
-      if (!paidTokens || paidTokens.checkoutSessionId !== checkoutSessionId || paidTokens.remainingTokens < totalSelected) {
+      if (
+          !paidTokens ||
+          paidTokens.checkoutSessionId !== checkoutSessionId ||
+          paidTokens.remainingTokens < totalSelected ||
+          (paidTokens.userId && paidTokens.userId !== authUser?.uid)
+      ) {
           setPaymentRecoveryError('The saved token balance could not cover this generation. Please contact support with your PayMongo receipt.');
           setIsPaymentRecoveryOpen(true);
           return;
@@ -1348,7 +1358,7 @@ const handleGenerateSF9 = useCallback(async (
       } finally {
           setIsProcessing(false);
       }
-  }, [handleGenerateSF9, loadPaidGenerationTokens, loadStateFromLocalStorage, toast]);
+  }, [authUser?.uid, handleGenerateSF9, loadPaidGenerationTokens, loadStateFromLocalStorage, toast]);
 
 
   const fetchTemplates = useCallback(async () => {
