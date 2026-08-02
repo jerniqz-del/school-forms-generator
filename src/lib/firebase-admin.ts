@@ -65,6 +65,13 @@ export async function getAdminFirestore() {
   return getFirestore();
 }
 
+export async function getAdminAuth() {
+  adminAppPromise ??= initAdminApp();
+  await adminAppPromise;
+  const { getAuth } = await import('firebase-admin/auth');
+  return getAuth();
+}
+
 export async function getAdminFieldValue() {
   const { FieldValue } = await import('firebase-admin/firestore');
   return FieldValue;

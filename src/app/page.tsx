@@ -1352,6 +1352,8 @@ export default function Home() {
       localStorage.removeItem('appState');
       localStorage.removeItem('checkoutSessionId');
       localStorage.removeItem(PAID_GENERATION_TOKENS_STORAGE_KEY);
+      localStorage.removeItem('tokenReloadCheckoutSessionId');
+      localStorage.removeItem('tokenReloadNeedsVerification');
     } catch (error) {
         console.error("Could not clear state from localStorage:", error);
     }
@@ -2607,6 +2609,33 @@ const formatPolishedName = (name: string): string => {
     setPaperSize('Custom');
     setPromoCode('');
     setIsPromoApplied(false);
+    setActiveReservationId(null);
+  };
+
+  const handleAccountReset = () => {
+    resetState();
+    clearStateFromLocalStorage();
+    try {
+      localStorage.removeItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY);
+      localStorage.removeItem(DRIVE_UPLOAD_FOLDER_STORAGE_KEY);
+      sessionStorage.removeItem('previousSchoolLogos');
+      sessionStorage.removeItem('previousSchoolInfo');
+      sessionStorage.removeItem('schoolFormsGeneratorGoogleDriveToken');
+    } catch (error) {
+      console.error("Could not clear account reset storage:", error);
+    }
+    setPreviousLogos([]);
+    setPreviousInfo(initialPreviousInfo);
+    setDriveBackupFiles([]);
+    setDriveBackupFolderLink(null);
+    setDriveUploadFolderLink(null);
+    refreshTokenWallet().catch(error => {
+      toast({
+        variant: 'destructive',
+        title: 'Token Wallet Refresh Failed',
+        description: error.message || 'Please refresh the page to reload your wallet.',
+      });
+    });
   };
 
   const handleRowSelection = (fileId: string, lrn: string) => {
@@ -2827,6 +2856,7 @@ const formatPolishedName = (name: string): string => {
           onReloadTokens={() => setIsTokenReloadOpen(true)}
           onShareTokens={() => setIsTokenShareOpen(true)}
           onOpenTokenHistory={handleOpenTokenHistory}
+          onResetAccount={handleAccountReset}
         />
       )}
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
