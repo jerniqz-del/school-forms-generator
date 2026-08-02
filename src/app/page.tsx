@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, Tag } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, Tag, LogIn } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -69,6 +69,7 @@ import { Badge } from '@/components/ui/badge';
 import { AppHeader } from '@/app/app-header';
 import { useDisclaimer } from '@/app/(main)/disclaimer-context';
 import { useUser as useFirebaseUser } from '@/firebase/provider';
+import { useUser as useAuthUser } from '@/firebase/auth/use-user';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -862,7 +863,8 @@ export default function Home() {
   const [useMiddleInitial, setUseMiddleInitial] = useState(true);
 
   const { toast } = useToast();
-  const { user: authUser } = useFirebaseUser();
+  const { user: authUser, isUserLoading } = useFirebaseUser();
+  const { signInWithGoogle } = useAuthUser();
   
   useEffect(() => {
     try {
@@ -2216,6 +2218,35 @@ const formatPolishedName = (name: string): string => {
       {hasMounted && <AppHeader />}
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
+
+        <Dialog open={hasMounted && !isUserLoading && !authUser}>
+            <DialogContent
+              className="sm:max-w-md"
+              hideCloseButton
+              onInteractOutside={(event) => event.preventDefault()}
+              onEscapeKeyDown={(event) => event.preventDefault()}
+            >
+              <DialogHeader>
+                <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <LogIn className="size-5" />
+                </div>
+                <DialogTitle className="text-center">Sign In Required</DialogTitle>
+                <DialogDescription className="text-center">
+                  Sign in with Google before using the SF9 Generator. Your account keeps paid generation tokens connected to you.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  className="w-full gap-2"
+                  size="lg"
+                  onClick={signInWithGoogle}
+                >
+                  <LogIn className="size-4" />
+                  Continue with Google
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+        </Dialog>
         
         <AlertDialog open={isDisclaimerOpen} onOpenChange={setIsDisclaimerOpen}>
             <AlertDialogContent className="max-w-3xl">
