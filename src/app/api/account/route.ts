@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getAdminAuth,
   getAdminFieldValue,
   getAdminFirestore,
   requireDecodedTokenFromRequest,
@@ -92,7 +91,6 @@ export async function DELETE(request: NextRequest) {
     const uid = decoded.uid;
     const email = decoded.email?.toLowerCase() || null;
     const db = await getAdminFirestore();
-    const auth = await getAdminAuth();
     const walletSnap = await db.collection('tokenWallets').doc(uid).get();
     const referralCode = walletSnap.data()?.referralCode;
 
@@ -119,7 +117,6 @@ export async function DELETE(request: NextRequest) {
     await batch.commit();
 
     await deleteQuery(db, db.collection('referralCodes').where('uid', '==', uid));
-    await auth.deleteUser(uid);
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {

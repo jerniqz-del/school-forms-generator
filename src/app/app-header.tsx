@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from "react";
+import { deleteUser } from "firebase/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,11 @@ export function AppHeader({
             if (!response.ok) throw new Error(data?.error || 'Unable to delete account.');
 
             setIsDeleteDialogOpen(false);
-            await signOut();
+            if (user) {
+                await deleteUser(user);
+            } else {
+                await signOut();
+            }
             toast({
                 variant: 'success',
                 title: 'Account Deleted',
