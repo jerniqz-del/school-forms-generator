@@ -1,10 +1,10 @@
-export const FREE_SIGNUP_TOKENS = 15;
+export const FREE_SIGNUP_TOKENS = 25;
 export const TOKENS_PER_STUDENT_FORM = 5;
 export const TOKEN_RELOAD_MIN_PESOS = 20;
 export const TOKENS_PER_PESO = 2.5;
 export const TOKEN_RELOAD_BONUS_THRESHOLD_PESOS = 100;
 export const TOKEN_RELOAD_BONUS_RATE = 0.05;
-export const REFERRAL_REWARD_TOKENS = 10;
+export const REFERRAL_REWARD_TOKENS = 20;
 
 export function calculateTokenCost(studentCount: number) {
   return studentCount * TOKENS_PER_STUDENT_FORM;
