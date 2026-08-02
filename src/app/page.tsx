@@ -218,6 +218,15 @@ type ReferralSummary = {
   }>;
 };
 
+type DriveBackupFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  webViewLink?: string;
+  modifiedTime?: string;
+  size?: string;
+};
+
 const regions = [
     "Region I", "Region II", "Region III", "Region IV-A", "Region IV-B", "Region V", 
     "Region VI", "Region VII", "Region VIII", "Region IX", "Region X", "Region XI", 
@@ -836,6 +845,40 @@ async function getDriveBackupFolderId(accessToken: string) {
   return folder.id as string;
 }
 
+async function getDriveBackupFolder(accessToken: string) {
+  const folderId = await getDriveBackupFolderId(accessToken);
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,webViewLink`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || 'Could not load Google Drive backup folder.');
+  }
+
+  return data as { id: string; name: string; webViewLink?: string };
+}
+
+async function listGoogleDriveBackupFiles(accessToken: string) {
+  const folderId = await getDriveBackupFolderId(accessToken);
+  const params = new URLSearchParams({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,size)',
+    orderBy: 'modifiedTime desc',
+    pageSize: '25',
+  });
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || 'Could not load generated files from Google Drive.');
+  }
+
+  return data.files as DriveBackupFile[];
+}
+
 async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, blob: Blob) {
   const folderId = await getDriveBackupFolderId(accessToken);
   const mimeType = getGeneratedFileMimeType(fileName);
@@ -976,6 +1019,10 @@ export default function Home() {
   const [isTokenReloadOpen, setIsTokenReloadOpen] = useState(false);
   const [isTokenShareOpen, setIsTokenShareOpen] = useState(false);
   const [isReferralRewardsOpen, setIsReferralRewardsOpen] = useState(false);
+  const [isDriveFilesOpen, setIsDriveFilesOpen] = useState(false);
+  const [isDriveFilesLoading, setIsDriveFilesLoading] = useState(false);
+  const [driveBackupFiles, setDriveBackupFiles] = useState<DriveBackupFile[]>([]);
+  const [driveBackupFolderLink, setDriveBackupFolderLink] = useState<string | null>(null);
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [reloadAmountPesos, setReloadAmountPesos] = useState(TOKEN_RELOAD_MIN_PESOS);
   const [shareEmail, setShareEmail] = useState('');
@@ -2277,6 +2324,29 @@ const formatPolishedName = (name: string): string => {
     }
   };
 
+  const handleOpenDriveFiles = async () => {
+    setIsDriveFilesOpen(true);
+    setIsDriveFilesLoading(true);
+
+    try {
+      const accessToken = await getGoogleDriveAccessToken();
+      const [folder, files] = await Promise.all([
+        getDriveBackupFolder(accessToken),
+        listGoogleDriveBackupFiles(accessToken),
+      ]);
+      setDriveBackupFolderLink(folder.webViewLink || null);
+      setDriveBackupFiles(files || []);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Google Drive Files Failed',
+        description: error.message || 'Could not load generated files from Google Drive.',
+      });
+    } finally {
+      setIsDriveFilesLoading(false);
+    }
+  };
+
 
   const handleApplyPromoCode = () => {
     if (!IS_DEVELOPER_PROMO_ENABLED) {
@@ -2683,6 +2753,10 @@ const formatPolishedName = (name: string): string => {
                 <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>
                   <Share2 className="mr-2 size-4" />
                   Share
+                </Button>
+                <Button variant="outline" onClick={handleOpenDriveFiles}>
+                  <Files className="mr-2 size-4" />
+                  Drive Files
                 </Button>
                 {tokenWallet?.referralCode && (
                   <>
@@ -3139,6 +3213,74 @@ const formatPolishedName = (name: string): string => {
                     </div>
                     <p className="text-xs text-muted-foreground">
                         Referrer rewards are granted once per referred account after a successful reload of at least PHP {referralSummary?.minimumReloadPesos || TOKEN_RELOAD_MIN_PESOS}. Referral rewards are usable for generation but are not shareable.
+                    </p>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isDriveFilesOpen} onOpenChange={setIsDriveFilesOpen}>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Files className="size-5 text-primary" />
+                        Generated Files in Google Drive
+                    </DialogTitle>
+                    <DialogDescription>
+                        View files saved by School Forms Generator in your Google Drive backup folder.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={handleOpenDriveFiles} disabled={isDriveFilesLoading}>
+                            {isDriveFilesLoading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCw className="mr-2 size-4" />}
+                            Refresh
+                        </Button>
+                        <Button
+                            variant="outline"
+                            disabled={!driveBackupFolderLink}
+                            onClick={() => driveBackupFolderLink && window.open(driveBackupFolderLink, '_blank', 'noopener,noreferrer')}
+                        >
+                            <Link className="mr-2 size-4" />
+                            Open Folder in Drive
+                        </Button>
+                    </div>
+                    <div className="rounded-lg border">
+                        <div className="max-h-80 divide-y overflow-y-auto">
+                            {isDriveFilesLoading ? (
+                                <div className="flex items-center justify-center gap-2 px-3 py-10 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Loading Google Drive files...
+                                </div>
+                            ) : driveBackupFiles.length ? driveBackupFiles.map(file => (
+                                <div key={file.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <FileIcon className="size-5 shrink-0 text-primary" />
+                                        <div className="min-w-0">
+                                            <p className="truncate font-medium">{file.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : 'Saved file'}
+                                                {file.size ? ` • ${(Number(file.size) / 1024 / 1024).toFixed(2)} MB` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={!file.webViewLink}
+                                        onClick={() => file.webViewLink && window.open(file.webViewLink, '_blank', 'noopener,noreferrer')}
+                                    >
+                                        Open
+                                    </Button>
+                                </div>
+                            )) : (
+                                <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                    No generated files found in your Google Drive backup folder yet.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Only files created by this app with your Drive permission are shown here.
                     </p>
                 </div>
             </DialogContent>
