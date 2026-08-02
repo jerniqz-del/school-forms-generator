@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
+import { REFERRAL_REWARD_TOKENS, TOKEN_RELOAD_MIN_PESOS } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,11 +56,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Payment has not been confirmed yet.' }, { status: 402 });
     }
 
+    let referralRewardTokens = 0;
     await db.runTransaction(async transaction => {
       const freshReload = await transaction.get(reloadRef);
       if (!freshReload.exists || freshReload.data()?.status === 'credited') return;
 
       const fresh = freshReload.data()!;
+      const referralInviteRef = db.collection('referralInvites').doc(uid);
+      const referralInviteSnap = await transaction.get(referralInviteRef);
+      const referralInvite = referralInviteSnap.data();
+      const shouldRewardReferrer =
+        referralInviteSnap.exists &&
+        referralInvite?.referrerUid &&
+        !referralInvite?.referrerRewardGranted &&
+        Number(fresh.amountPesos || 0) >= TOKEN_RELOAD_MIN_PESOS;
+
       transaction.set(
         db.collection('tokenWallets').doc(uid),
         {
@@ -70,6 +81,43 @@ export async function POST(request: NextRequest) {
         },
         { merge: true }
       );
+      if (shouldRewardReferrer) {
+        referralRewardTokens = Number(referralInvite.referrerRewardTokens || REFERRAL_REWARD_TOKENS);
+        transaction.set(
+          db.collection('tokenWallets').doc(referralInvite.referrerUid),
+          {
+            tokens: FieldValue.increment(referralRewardTokens),
+            lifetimeReferralRewards: FieldValue.increment(referralRewardTokens),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        transaction.update(referralInviteRef, {
+          status: 'reward_granted',
+          referrerRewardGranted: true,
+          firstReloadCheckoutSessionId: checkoutSessionId,
+          firstReloadAmountPesos: fresh.amountPesos,
+          firstReloadAt: FieldValue.serverTimestamp(),
+          rewardGrantedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        transaction.set(db.collection('tokenLedger').doc(), {
+          uid: referralInvite.referrerUid,
+          type: 'referral_reward',
+          tokens: referralRewardTokens,
+          referredUid: uid,
+          checkoutSessionId,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } else if (referralInviteSnap.exists && !referralInvite?.firstReloadAt) {
+        transaction.update(referralInviteRef, {
+          status: 'first_reload_completed',
+          firstReloadCheckoutSessionId: checkoutSessionId,
+          firstReloadAmountPesos: fresh.amountPesos,
+          firstReloadAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
       transaction.update(reloadRef, {
         status: 'credited',
         creditedAt: FieldValue.serverTimestamp(),
@@ -85,7 +133,7 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    return NextResponse.json({ verified: true, tokens: reload.totalTokens });
+    return NextResponse.json({ verified: true, tokens: reload.totalTokens, referralRewardTokens });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Unable to verify token reload.' }, { status: 500 });
   }

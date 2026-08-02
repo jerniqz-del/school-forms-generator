@@ -75,6 +75,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
 import {
+  REFERRAL_REWARD_TOKENS,
   TOKEN_RELOAD_MIN_PESOS,
   TOKENS_PER_STUDENT_FORM,
   calculateAllowableStudentForms,
@@ -192,6 +193,28 @@ type TokenWallet = {
   shareableTokens?: number;
   reservedTokens: number;
   referralCode: string;
+};
+
+type ReferralSummary = {
+  rewardTokens: number;
+  minimumReloadPesos: number;
+  summary: {
+    signedUp: number;
+    firstReloadCompleted: number;
+    rewardGranted: number;
+    pendingRewards: number;
+    totalRewardTokens: number;
+  };
+  referrals: Array<{
+    id: string;
+    referredEmail: string | null;
+    status: string;
+    referrerRewardGranted: boolean;
+    referrerRewardTokens: number;
+    signedUpAt: string | null;
+    firstReloadAt: string | null;
+    rewardGrantedAt: string | null;
+  }>;
 };
 
 const regions = [
@@ -866,6 +889,8 @@ export default function Home() {
   const [tokenWallet, setTokenWallet] = useState<TokenWallet | null>(null);
   const [isTokenReloadOpen, setIsTokenReloadOpen] = useState(false);
   const [isTokenShareOpen, setIsTokenShareOpen] = useState(false);
+  const [isReferralRewardsOpen, setIsReferralRewardsOpen] = useState(false);
+  const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [reloadAmountPesos, setReloadAmountPesos] = useState(TOKEN_RELOAD_MIN_PESOS);
   const [shareEmail, setShareEmail] = useState('');
   const [shareTokenAmount, setShareTokenAmount] = useState(5);
@@ -2117,6 +2142,30 @@ const formatPolishedName = (name: string): string => {
     }
   };
 
+  const handleOpenReferralRewards = async () => {
+    setIsReferralRewardsOpen(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/tokens/referrals', {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, 'Could not load referral rewards.'));
+      }
+
+      const data = await response.json().catch(() => null);
+      setReferralSummary(data);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Referral Rewards Failed',
+        description: error.message || 'Could not load referral rewards.',
+      });
+    }
+  };
+
 
   const handleApplyPromoCode = () => {
     if (!IS_DEVELOPER_PROMO_ENABLED) {
@@ -2525,17 +2574,23 @@ const formatPolishedName = (name: string): string => {
                   Share
                 </Button>
                 {tokenWallet?.referralCode && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
-                      navigator.clipboard?.writeText(url);
-                      toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another user to earn reward tokens.' });
-                    }}
-                  >
-                    <Gift className="mr-2 size-4" />
-                    Copy Referral Link
-                  </Button>
+                  <>
+                    <Button variant="outline" onClick={handleOpenReferralRewards}>
+                      <Gift className="mr-2 size-4" />
+                      Referral Rewards
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
+                        navigator.clipboard?.writeText(url);
+                        toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another teacher to earn reward tokens after their first reload.' });
+                      }}
+                    >
+                      <Gift className="mr-2 size-4" />
+                      Copy Referral Link
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -2897,6 +2952,82 @@ const formatPolishedName = (name: string): string => {
                     <Button variant="outline" onClick={() => setIsTokenReloadOpen(false)}>Cancel</Button>
                     <Button onClick={handleTokenReload}>Proceed to PayMongo</Button>
                 </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isReferralRewardsOpen} onOpenChange={setIsReferralRewardsOpen}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Gift className="size-5 text-primary" />
+                        Referral Rewards
+                    </DialogTitle>
+                    <DialogDescription>
+                        Invite another teacher. They receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bonus tokens when they sign up, and you receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bonus tokens after their first token reload.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                        <p className="mb-2 text-muted-foreground">Your referral link</p>
+                        <div className="flex gap-2">
+                            <Input readOnly value={tokenWallet?.referralCode ? `${typeof window !== 'undefined' ? window.location.origin : ''}/?ref=${tokenWallet.referralCode}` : ''} />
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    if (!tokenWallet?.referralCode) return;
+                                    const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
+                                    navigator.clipboard?.writeText(url);
+                                    toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another teacher.' });
+                                }}
+                            >
+                                Copy
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="rounded-lg border p-3">
+                            <p className="text-xs text-muted-foreground">Signed Up</p>
+                            <p className="text-lg font-semibold">{referralSummary?.summary.signedUp ?? 0}</p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                            <p className="text-xs text-muted-foreground">First Reload</p>
+                            <p className="text-lg font-semibold">{referralSummary?.summary.firstReloadCompleted ?? 0}</p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                            <p className="text-xs text-muted-foreground">Pending</p>
+                            <p className="text-lg font-semibold">{referralSummary?.summary.pendingRewards ?? 0}</p>
+                        </div>
+                        <div className="rounded-lg border p-3">
+                            <p className="text-xs text-muted-foreground">Earned</p>
+                            <p className="text-lg font-semibold">{referralSummary?.summary.totalRewardTokens ?? 0}</p>
+                        </div>
+                    </div>
+                    <div className="rounded-lg border">
+                        <div className="border-b px-3 py-2 text-sm font-medium">Recent Referrals</div>
+                        <div className="max-h-56 divide-y overflow-y-auto">
+                            {referralSummary?.referrals.length ? referralSummary.referrals.map(referral => (
+                                <div key={referral.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium">{referral.referredEmail || 'Teacher account'}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {referral.referrerRewardGranted ? 'Reward granted' : referral.firstReloadAt ? 'First reload completed' : 'Signed up'}
+                                        </p>
+                                    </div>
+                                    <Badge variant={referral.referrerRewardGranted ? 'default' : 'secondary'}>
+                                        {referral.referrerRewardGranted ? `+${referral.referrerRewardTokens}` : 'Pending'}
+                                    </Badge>
+                                </div>
+                            )) : (
+                                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                                    No referred teachers yet.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Referrer rewards are granted once per referred account after a successful reload of at least PHP {referralSummary?.minimumReloadPesos || TOKEN_RELOAD_MIN_PESOS}. Referral rewards are usable for generation but are not shareable.
+                    </p>
+                </div>
             </DialogContent>
         </Dialog>
 

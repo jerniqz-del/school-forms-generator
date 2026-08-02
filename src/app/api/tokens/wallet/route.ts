@@ -9,6 +9,10 @@ function buildReferralCode(uid: string) {
   return `SFG-${uid.slice(0, 8).toUpperCase()}`;
 }
 
+function getEmailDomain(email?: string | null) {
+  return email?.split('@')[1]?.toLowerCase() || null;
+}
+
 async function ensureWallet(uid: string, email?: string | null, referralCode?: string | null) {
   const db = await getAdminFirestore();
   const FieldValue = await getAdminFieldValue();
@@ -78,22 +82,36 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       const referrerUid = referralSnap.exists ? referralSnap.data()?.uid : null;
 
       if (typeof referrerUid === 'string' && referrerUid && referrerUid !== uid) {
-        referredBy = referrerUid;
-        tokens += REFERRAL_REWARD_TOKENS;
-        transaction.set(
-          db.collection('tokenWallets').doc(referrerUid),
-          {
-            tokens: FieldValue.increment(REFERRAL_REWARD_TOKENS),
-            lifetimeReferralRewards: FieldValue.increment(REFERRAL_REWARD_TOKENS),
+        const referrerWalletSnap = await transaction.get(db.collection('tokenWallets').doc(referrerUid));
+        const referrerEmail = referrerWalletSnap.data()?.email;
+        const isSameEmail = normalizedEmail && referrerEmail === normalizedEmail;
+
+        if (!isSameEmail) {
+          referredBy = referrerUid;
+          tokens += REFERRAL_REWARD_TOKENS;
+          transaction.set(db.collection('referralInvites').doc(uid), {
+            referrerUid,
+            referredUid: uid,
+            referredEmail: normalizedEmail,
+            referredDomain: getEmailDomain(normalizedEmail),
+            status: 'signed_up',
+            referredRewardGranted: true,
+            referrerRewardGranted: false,
+            referredRewardTokens: REFERRAL_REWARD_TOKENS,
+            referrerRewardTokens: REFERRAL_REWARD_TOKENS,
+            createdAt: FieldValue.serverTimestamp(),
+            signedUpAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+          });
+        }
+      }
+
+      if (referredBy) {
         transaction.set(db.collection('tokenLedger').doc(), {
-          uid: referrerUid,
-          type: 'referral_reward',
+          uid,
+          type: 'referral_signup_bonus',
           tokens: REFERRAL_REWARD_TOKENS,
-          referredUid: uid,
+          referrerUid: referredBy,
           createdAt: FieldValue.serverTimestamp(),
         });
       }
