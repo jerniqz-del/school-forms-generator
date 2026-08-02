@@ -139,25 +139,33 @@ export function AppHeader({
                     <div className="flex flex-1 items-center justify-end">
                         <nav className="flex flex-wrap items-center justify-end gap-2">
                         {user && typeof availableTokens === 'number' && (
-                            <div className="flex flex-col items-end gap-2">
-                                <div className="rounded-full border bg-muted/40 px-3 py-1 text-sm font-semibold">
-                                    {availableTokens} tokens
-                                </div>
-                                <div className="flex flex-wrap justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={onReloadTokens} className="gap-2">
-                                        <Coins className="size-4" />
-                                        Reload
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="rounded-full bg-muted/40 px-3 font-semibold">
+                                        {availableTokens} tokens
                                     </Button>
-                                    <Button variant="outline" size="sm" onClick={onShareTokens} className="gap-2">
-                                        <Share2 className="size-4" />
-                                        Share
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={onOpenTokenHistory} className="gap-2">
-                                        <History className="size-4" />
-                                        History
-                                    </Button>
-                                </div>
-                            </div>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-80 p-3">
+                                    <div className="mb-3 px-1">
+                                        <p className="text-sm font-semibold">Token Wallet</p>
+                                        <p className="text-xs text-muted-foreground">{availableTokens} token(s) available</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button variant="outline" size="sm" onClick={onReloadTokens} className="flex-1 gap-2">
+                                            <Coins className="size-4" />
+                                            Reload
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={onShareTokens} className="flex-1 gap-2">
+                                            <Share2 className="size-4" />
+                                            Share
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={onOpenTokenHistory} className="flex-1 gap-2">
+                                            <History className="size-4" />
+                                            History
+                                        </Button>
+                                    </div>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         )}
                         {user ? (
                             <DropdownMenu>
