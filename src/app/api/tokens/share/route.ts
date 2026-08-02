@@ -24,13 +24,19 @@ export async function POST(request: NextRequest) {
 
     await db.runTransaction(async transaction => {
       const senderSnap = await transaction.get(senderRef);
-      const senderTokens = Number(senderSnap.data()?.tokens || 0);
+      const sender = senderSnap.data() || {};
+      const senderTokens = Number(sender.tokens || 0);
+      const shareableTokens = Number(sender.shareableTokens || 0);
       if (!senderSnap.exists || senderTokens < amount) {
         throw new Error('Insufficient tokens.');
+      }
+      if (shareableTokens < amount) {
+        throw new Error('Only reloaded tokens can be shared.');
       }
 
       transaction.update(senderRef, {
         tokens: FieldValue.increment(-amount),
+        shareableTokens: FieldValue.increment(-amount),
         sharedTokensSent: FieldValue.increment(amount),
         updatedAt: FieldValue.serverTimestamp(),
       });

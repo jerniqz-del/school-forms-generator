@@ -40,6 +40,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         : missingSignupTokens;
       const updateData: Record<string, any> = {
         email: normalizedEmail,
+        shareableTokens: Number(wallet.shareableTokens || 0),
         updatedAt: FieldValue.serverTimestamp(),
       };
 
@@ -102,6 +103,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       uid,
       email: normalizedEmail,
       tokens,
+      shareableTokens: 0,
       reservedTokens: 0,
       freeSignupTokensGranted: FREE_SIGNUP_TOKENS,
       referralCode: ownReferralCode,

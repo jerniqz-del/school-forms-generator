@@ -189,6 +189,7 @@ type PaidGenerationTokenLedger = {
 
 type TokenWallet = {
   tokens: number;
+  shareableTokens?: number;
   reservedTokens: number;
   referralCode: string;
 };
@@ -2903,10 +2904,16 @@ const formatPolishedName = (name: string): string => {
                         Share Tokens
                     </DialogTitle>
                     <DialogDescription>
-                        Share tokens with another registered user by email.
+                        Only tokens bought through reload can be shared.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
+                    <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Shareable reload tokens</span>
+                            <span className="font-semibold">{tokenWallet?.shareableTokens || 0}</span>
+                        </div>
+                    </div>
                     <Input
                         placeholder="Recipient email"
                         value={shareEmail}
@@ -2915,12 +2922,13 @@ const formatPolishedName = (name: string): string => {
                     <Input
                         type="number"
                         min={1}
+                        max={tokenWallet?.shareableTokens || 0}
                         value={shareTokenAmount}
                         onChange={(event) => setShareTokenAmount(Number(event.target.value))}
                     />
                 </div>
                 <DialogFooter>
-                    <Button onClick={handleShareTokens}>Share Tokens</Button>
+                    <Button onClick={handleShareTokens} disabled={(tokenWallet?.shareableTokens || 0) < 1}>Share Tokens</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

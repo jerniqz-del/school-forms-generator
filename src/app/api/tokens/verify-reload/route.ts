@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
         db.collection('tokenWallets').doc(uid),
         {
           tokens: FieldValue.increment(fresh.totalTokens),
+          shareableTokens: FieldValue.increment(fresh.totalTokens),
           lifetimePurchasedTokens: FieldValue.increment(fresh.totalTokens),
           updatedAt: FieldValue.serverTimestamp(),
         },
