@@ -3,6 +3,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
 import { FREE_SIGNUP_TOKENS, REFERRAL_REWARD_TOKENS } from '@/lib/tokens';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 function buildReferralCode(uid: string) {
   return `SFG-${uid.slice(0, 8).toUpperCase()}`;
 }

@@ -3,6 +3,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { calculateTokenCost } from '@/lib/tokens';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const uid = await requireUserIdFromRequest(request);

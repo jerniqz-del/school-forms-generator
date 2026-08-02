@@ -3,6 +3,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { TOKEN_RELOAD_MIN_PESOS, calculateTokenReload } from '@/lib/tokens';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 function getPayMongoError(data: any) {
   const firstError = data?.errors?.[0];
   return firstError?.detail || firstError?.title || firstError?.code || 'Failed to create token reload checkout session.';
