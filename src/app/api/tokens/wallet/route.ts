@@ -18,20 +18,38 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
 
     if (walletSnap.exists) {
       const wallet = walletSnap.data() || {};
+      const currentTokens = Number(wallet.tokens || 0);
+      const reservedTokens = Number(wallet.reservedTokens || 0);
       const grantedSignupTokens = Number(wallet.freeSignupTokensGranted || 0);
       const missingSignupTokens = Math.max(0, FREE_SIGNUP_TOKENS - grantedSignupTokens);
+      const needsSignupBalanceRepair =
+        missingSignupTokens === 0 &&
+        currentTokens < FREE_SIGNUP_TOKENS &&
+        reservedTokens === 0 &&
+        !wallet.signupBalanceRepairGranted &&
+        Number(wallet.lifetimePurchasedTokens || 0) === 0 &&
+        Number(wallet.lifetimeReferralRewards || 0) === 0 &&
+        Number(wallet.spentTokens || 0) === 0 &&
+        Number(wallet.sharedTokensReceived || 0) === 0 &&
+        Number(wallet.sharedTokensSent || 0) === 0;
+      const signupTokensToGrant = needsSignupBalanceRepair
+        ? FREE_SIGNUP_TOKENS - currentTokens
+        : missingSignupTokens;
       const updateData: Record<string, any> = {
         email: normalizedEmail,
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      if (missingSignupTokens > 0) {
-        updateData.tokens = FieldValue.increment(missingSignupTokens);
+      if (signupTokensToGrant > 0) {
+        updateData.tokens = FieldValue.increment(signupTokensToGrant);
         updateData.freeSignupTokensGranted = FREE_SIGNUP_TOKENS;
+        if (needsSignupBalanceRepair) {
+          updateData.signupBalanceRepairGranted = true;
+        }
         transaction.set(db.collection('tokenLedger').doc(), {
           uid,
           type: 'signup_bonus',
-          tokens: missingSignupTokens,
+          tokens: signupTokensToGrant,
           createdAt: FieldValue.serverTimestamp(),
         });
       }

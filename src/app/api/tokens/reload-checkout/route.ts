@@ -3,6 +3,11 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { TOKEN_RELOAD_MIN_PESOS, calculateTokenReload } from '@/lib/tokens';
 
+function getPayMongoError(data: any) {
+  const firstError = data?.errors?.[0];
+  return firstError?.detail || firstError?.title || firstError?.code || 'Failed to create token reload checkout session.';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const uid = await requireUserIdFromRequest(request);
@@ -21,7 +26,7 @@ export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin') || 'http://localhost:3000';
     const authHeader = `Basic ${Buffer.from(secretKey + ':').toString('base64')}`;
 
-    const response = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
+    const response = await fetch('https://api.paymongo.com/v2/checkout_sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,6 +51,7 @@ export async function POST(request: NextRequest) {
             payment_method_types: ['qrph'],
             success_url: `${origin}/?token_payment_status=success`,
             cancel_url: `${origin}/?token_payment_status=cancelled`,
+            reference_number: `SFG-TOKENS-${Date.now()}`,
             description: `Token reload for School Forms Generator.`,
           },
         },
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const resData = await response.json();
     if (!response.ok) {
-      const errorMsg = resData?.errors?.[0]?.detail || 'Failed to create token reload checkout session.';
+      const errorMsg = getPayMongoError(resData);
       return NextResponse.json({ error: errorMsg }, { status: response.status });
     }
 
