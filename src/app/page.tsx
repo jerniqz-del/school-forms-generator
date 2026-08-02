@@ -869,6 +869,7 @@ export default function Home() {
   const [shareEmail, setShareEmail] = useState('');
   const [shareTokenAmount, setShareTokenAmount] = useState(5);
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const tokenReloadVerificationAttemptedRef = useRef(false);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -929,6 +930,42 @@ export default function Home() {
     return data.wallet as TokenWallet;
   }, [authUser, getAuthHeaders]);
 
+  const verifyTokenReload = useCallback(async (checkoutSessionId: string) => {
+    setLoadingMessage('Verifying token reload...');
+    setIsProcessing(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const verifyResponse = await fetch('/api/tokens/verify-reload', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkoutSessionId }),
+      });
+
+      if (!verifyResponse.ok) {
+        throw new Error(await readApiError(verifyResponse, 'Could not verify token reload payment.'));
+      }
+
+      const verifyData = await verifyResponse.json().catch(() => null);
+      localStorage.removeItem('tokenReloadCheckoutSessionId');
+      localStorage.removeItem('tokenReloadNeedsVerification');
+      await refreshTokenWallet();
+      toast({
+        variant: 'success',
+        title: verifyData?.alreadyCredited ? 'Tokens Already Reloaded' : 'Tokens Reloaded',
+        description: `${verifyData?.tokens || 0} token(s) ${verifyData?.alreadyCredited ? 'were already added' : 'added'} to your account.`,
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Token Reload Failed',
+        description: error.message || 'Could not reload tokens.',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [getAuthHeaders, refreshTokenWallet, toast]);
+
   useEffect(() => {
     if (!authUser) {
       setTokenWallet(null);
@@ -944,6 +981,18 @@ export default function Home() {
       });
     });
   }, [authUser, refreshTokenWallet, toast]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isUserLoading || !authUser || tokenReloadVerificationAttemptedRef.current) return;
+
+    const checkoutSessionId = localStorage.getItem('tokenReloadCheckoutSessionId');
+
+    if (!checkoutSessionId) return;
+
+    tokenReloadVerificationAttemptedRef.current = true;
+    verifyTokenReload(checkoutSessionId);
+  }, [authUser, isUserLoading, verifyTokenReload]);
   
   useEffect(() => {
     try {
@@ -1296,6 +1345,7 @@ const handleGenerateSF9 = useCallback(async (
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (isUserLoading) return;
 
     const processPayment = async () => {
       const currentSearchParams = new URLSearchParams(window.location.search);
@@ -1303,12 +1353,22 @@ const handleGenerateSF9 = useCallback(async (
       const tokenPaymentStatus = currentSearchParams.get('token_payment_status');
 
       if (!paymentStatus && !tokenPaymentStatus) return;
-      
-      window.history.replaceState({}, document.title, window.location.pathname);
 
       if (tokenPaymentStatus === 'success') {
+          localStorage.setItem('tokenReloadNeedsVerification', 'true');
+
+          if (!authUser) {
+              toast({
+                  variant: 'destructive',
+                  title: 'Token Reload Pending',
+                  description: 'Sign in again to finish verifying your token reload.',
+              });
+              return;
+          }
+
           const checkoutSessionId = localStorage.getItem('tokenReloadCheckoutSessionId');
           if (!checkoutSessionId) {
+              window.history.replaceState({}, document.title, window.location.pathname);
               toast({
                   variant: 'destructive',
                   title: 'Token Reload Verification Failed',
@@ -1317,39 +1377,13 @@ const handleGenerateSF9 = useCallback(async (
               return;
           }
 
-          try {
-              setLoadingMessage('Verifying token reload...');
-              setIsProcessing(true);
-              const headers = await getAuthHeaders();
-              const verifyResponse = await fetch('/api/tokens/verify-reload', {
-                  method: 'POST',
-                  headers: { ...headers, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ checkoutSessionId }),
-              });
-              const verifyData = await verifyResponse.json().catch(() => null);
-              if (!verifyResponse.ok) {
-                  throw new Error(verifyData?.error || 'Could not verify token reload payment.');
-              }
-
-              localStorage.removeItem('tokenReloadCheckoutSessionId');
-              await refreshTokenWallet();
-              toast({
-                  variant: 'success',
-                  title: 'Tokens Reloaded',
-                  description: `${verifyData.tokens} token(s) added to your account.`,
-              });
-          } catch (error: any) {
-              toast({
-                  variant: 'destructive',
-                  title: 'Token Reload Failed',
-                  description: error.message || 'Could not reload tokens.',
-              });
-          } finally {
-              setIsProcessing(false);
-          }
+          window.history.replaceState({}, document.title, window.location.pathname);
+          await verifyTokenReload(checkoutSessionId);
           return;
       } else if (tokenPaymentStatus === 'cancelled') {
           localStorage.removeItem('tokenReloadCheckoutSessionId');
+          localStorage.removeItem('tokenReloadNeedsVerification');
+          window.history.replaceState({}, document.title, window.location.pathname);
           toast({
               variant: 'destructive',
               title: 'Token Reload Cancelled',
@@ -1357,6 +1391,8 @@ const handleGenerateSF9 = useCallback(async (
           });
           return;
       }
+
+      window.history.replaceState({}, document.title, window.location.pathname);
 
       if (paymentStatus === 'success') {
           const restoredState = loadStateFromLocalStorage();
@@ -1431,7 +1467,7 @@ const handleGenerateSF9 = useCallback(async (
     };
 
     processPayment();
-  }, [authUser?.uid, getAuthHeaders, handleGenerateSF9, loadStateFromLocalStorage, refreshTokenWallet, savePaidGenerationTokens, toast]);
+  }, [authUser, authUser?.uid, handleGenerateSF9, isUserLoading, loadStateFromLocalStorage, refreshTokenWallet, savePaidGenerationTokens, toast, verifyTokenReload]);
 
   const handleRetryPaidGeneration = useCallback(async () => {
       const restoredState = loadStateFromLocalStorage();
@@ -2039,6 +2075,7 @@ const formatPolishedName = (name: string): string => {
       }
       const data = await response.json().catch(() => null);
       localStorage.setItem('tokenReloadCheckoutSessionId', data.checkoutSessionId);
+      localStorage.setItem('tokenReloadNeedsVerification', 'true');
       setIsTokenReloadOpen(false);
       window.open(data.url, '_blank')?.focus();
     } catch (error: any) {
