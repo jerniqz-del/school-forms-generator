@@ -194,6 +194,8 @@ export const useUser = () => {
     return credential.accessToken;
   };
 
+  const getCachedGoogleDriveAccessTokenOnly = () => getCachedGoogleDriveAccessToken();
+
   const signOut = async () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_STORAGE_KEY);
@@ -210,5 +212,5 @@ export const useUser = () => {
     return () => unsubscribe();
   }, [handleUser, auth]);
 
-  return { ...userState, signInWithGoogle, getGoogleDriveAccessToken, signOut };
+  return { ...userState, signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly, signOut };
 };

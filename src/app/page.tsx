@@ -1121,7 +1121,7 @@ export default function Home() {
 
   const { toast } = useToast();
   const { user: authUser, isUserLoading } = useFirebaseUser();
-  const { signInWithGoogle, getGoogleDriveAccessToken } = useAuthUser();
+  const { signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly } = useAuthUser();
 
   const getAuthHeaders = useCallback(async () => {
     if (!authUser) {
@@ -2016,19 +2016,21 @@ const formatPolishedName = (name: string): string => {
     }
 
     if (saveToDriveBackup && processedFiles.length > 0) {
-      try {
-        setLoadingMessage('Saving uploaded files to Google Drive...');
-        const driveAccessToken = await getGoogleDriveAccessToken();
-        const uploadFolderId = await getDriveUploadFolderId(driveAccessToken);
-        await Promise.all(
-          pendingFiles.map(file => uploadBlobToGoogleDrive(driveAccessToken, file.name, file, uploadFolderId))
-        );
-      } catch (driveError: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Uploaded File Backup Failed',
-          description: driveError.message || 'The SF1 files were processed, but could not be saved to Google Drive.',
-        });
+      const driveAccessToken = getCachedGoogleDriveAccessTokenOnly();
+      if (driveAccessToken) {
+        try {
+          setLoadingMessage('Saving uploaded files to Google Drive...');
+          const uploadFolderId = await getDriveUploadFolderId(driveAccessToken);
+          await Promise.all(
+            pendingFiles.map(file => uploadBlobToGoogleDrive(driveAccessToken, file.name, file, uploadFolderId))
+          );
+        } catch (driveError: any) {
+          toast({
+            variant: 'destructive',
+            title: 'Uploaded File Backup Failed',
+            description: driveError.message || 'The SF1 files were processed, but could not be saved to Google Drive.',
+          });
+        }
       }
     }
 
