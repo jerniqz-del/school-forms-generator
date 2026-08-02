@@ -894,6 +894,19 @@ export default function Home() {
     return { Authorization: `Bearer ${token}` };
   }, [authUser]);
 
+  const readApiError = async (response: Response, fallback: string) => {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const data = await response.json().catch(() => null);
+      return data?.error || `${fallback} (${response.status})`;
+    }
+
+    const body = await response.text().catch(() => '');
+    const detail = body.replace(/\s+/g, ' ').trim().slice(0, 160);
+    return detail ? `${fallback} (${response.status}): ${detail}` : `${fallback} (${response.status})`;
+  };
+
   const refreshTokenWallet = useCallback(async (referralCode?: string) => {
     if (!authUser) {
       setTokenWallet(null);
@@ -908,10 +921,10 @@ export default function Home() {
         : headers,
       body: referralCode ? JSON.stringify({ referralCode }) : undefined,
     });
-    const data = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(data?.error || 'Unable to load token wallet.');
+      throw new Error(await readApiError(response, 'Unable to load token wallet.'));
     }
+    const data = await response.json().catch(() => null);
     setTokenWallet(data.wallet);
     return data.wallet as TokenWallet;
   }, [authUser, getAuthHeaders]);
@@ -2021,10 +2034,10 @@ const formatPolishedName = (name: string): string => {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ amountPesos: reloadAmountPesos }),
       });
-      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(data?.error || 'Could not create token reload checkout.');
+        throw new Error(await readApiError(response, 'Could not create token reload checkout.'));
       }
+      const data = await response.json().catch(() => null);
       localStorage.setItem('tokenReloadCheckoutSessionId', data.checkoutSessionId);
       setIsTokenReloadOpen(false);
       window.open(data.url, '_blank')?.focus();
@@ -2045,9 +2058,8 @@ const formatPolishedName = (name: string): string => {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipientEmail: shareEmail, tokens: shareTokenAmount }),
       });
-      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(data?.error || 'Could not share tokens.');
+        throw new Error(await readApiError(response, 'Could not share tokens.'));
       }
       setShareEmail('');
       setShareTokenAmount(5);

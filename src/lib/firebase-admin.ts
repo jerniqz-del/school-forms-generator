@@ -5,7 +5,16 @@ import firebaseConfigData from '@/firebase/firebase-applet-config.json';
 
 function getPrivateKey() {
   const rawKey = process.env.FIREBASE_PRIVATE_KEY;
-  return rawKey?.replace(/\\n/g, '\n');
+  if (!rawKey) return undefined;
+
+  const trimmedKey = rawKey.trim();
+  const unquotedKey =
+    (trimmedKey.startsWith('"') && trimmedKey.endsWith('"')) ||
+    (trimmedKey.startsWith("'") && trimmedKey.endsWith("'"))
+      ? trimmedKey.slice(1, -1)
+      : trimmedKey;
+
+  return unquotedKey.replace(/\\n/g, '\n');
 }
 
 function initAdminApp() {
@@ -15,8 +24,9 @@ function initAdminApp() {
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccountJson) {
+    const normalizedServiceAccount = serviceAccountJson.trim();
     return initializeApp({
-      credential: cert(JSON.parse(serviceAccountJson)),
+      credential: cert(JSON.parse(normalizedServiceAccount)),
     });
   }
 
