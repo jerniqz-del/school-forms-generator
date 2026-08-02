@@ -125,6 +125,7 @@ export const useUser = () => {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/drive.file');
     try {
       await signInWithPopup(auth, provider);
     } catch (error) {
@@ -140,7 +141,6 @@ export const useUser = () => {
   const getGoogleDriveAccessToken = async () => {
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/drive.file');
-    provider.setCustomParameters({ prompt: 'consent' });
 
     const result = auth.currentUser
       ? await reauthenticateWithPopup(auth.currentUser, provider)

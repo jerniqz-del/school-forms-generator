@@ -2647,7 +2647,7 @@ const formatPolishedName = (name: string): string => {
                 </div>
                 <DialogTitle className="text-center">Sign In Required</DialogTitle>
                 <DialogDescription className="text-center">
-                  Sign in with Google before using School Forms Generator. Your account keeps paid generation tokens connected to you.
+                  Sign in with Google before using School Forms Generator. Your account keeps tokens connected to you and enables Google Drive backup.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -2657,7 +2657,7 @@ const formatPolishedName = (name: string): string => {
                   onClick={signInWithGoogle}
                 >
                   <LogIn className="size-4" />
-                  Continue with Google
+                  Continue with Google and Drive Backup
                 </Button>
               </DialogFooter>
             </DialogContent>
