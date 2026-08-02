@@ -176,6 +176,7 @@ type AppState = {
   selectedTemplateUrls: { [gradeLevel: string]: string };
   useMiddleInitial: boolean;
   documentType: PricedDocumentType;
+  saveToDriveBackup: boolean;
 };
 
 type PaidGenerationTokenLedger = {
@@ -407,6 +408,8 @@ const IS_DEVELOPER_PROMO_ENABLED = process.env.NODE_ENV !== 'production';
 const IS_PDF_OUTPUT_ENABLED = false;
 const IS_LIVE_PDF_PREVIEW_ENABLED = false;
 const PAID_GENERATION_TOKENS_STORAGE_KEY = 'paidGenerationTokens';
+const DRIVE_BACKUP_FOLDER_STORAGE_KEY = 'schoolFormsGeneratorDriveFolderId';
+const DRIVE_BACKUP_FOLDER_NAME = 'School Forms Generator - Generated SF9';
 
 
 const HistoryBadges = ({
@@ -786,6 +789,88 @@ const TemplatePreviewCard = ({
   );
 };
 
+function getGeneratedFileMimeType(fileName: string) {
+  if (fileName.toLowerCase().endsWith('.zip')) return 'application/zip';
+  if (fileName.toLowerCase().endsWith('.pdf')) return 'application/pdf';
+  return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+async function createDriveFolder(accessToken: string) {
+  const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: DRIVE_BACKUP_FOLDER_NAME,
+      mimeType: 'application/vnd.google-apps.folder',
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error?.message || 'Could not create Google Drive backup folder.');
+  }
+
+  return response.json();
+}
+
+async function getDriveBackupFolderId(accessToken: string) {
+  const savedFolderId = typeof window !== 'undefined'
+    ? localStorage.getItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY)
+    : null;
+
+  if (savedFolderId) {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(savedFolderId)}?fields=id,trashed`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok && !data?.trashed) return savedFolderId;
+  }
+
+  const folder = await createDriveFolder(accessToken);
+  if (typeof window !== 'undefined' && folder?.id) {
+    localStorage.setItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY, folder.id);
+  }
+  return folder.id as string;
+}
+
+async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, blob: Blob) {
+  const folderId = await getDriveBackupFolderId(accessToken);
+  const mimeType = getGeneratedFileMimeType(fileName);
+  const metadata = {
+    name: fileName,
+    parents: [folderId],
+  };
+  const boundary = `school_forms_generator_${Date.now()}`;
+  const body = new Blob([
+    `--${boundary}\r\n`,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    JSON.stringify(metadata),
+    `\r\n--${boundary}\r\n`,
+    `Content-Type: ${mimeType}\r\n\r\n`,
+    blob,
+    `\r\n--${boundary}--`,
+  ], { type: `multipart/related; boundary=${boundary}` });
+
+  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error?.message || 'Could not save the generated file to Google Drive.');
+  }
+
+  return data as { id: string; name: string; webViewLink?: string };
+}
+
 
 const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
     const steps = [
@@ -877,6 +962,7 @@ export default function Home() {
 
   const [paperSize, setPaperSize] = useState('Custom');
   const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
+  const [saveToDriveBackup, setSaveToDriveBackup] = useState(true);
 
   const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
@@ -911,7 +997,7 @@ export default function Home() {
 
   const { toast } = useToast();
   const { user: authUser, isUserLoading } = useFirebaseUser();
-  const { signInWithGoogle } = useAuthUser();
+  const { signInWithGoogle, getGoogleDriveAccessToken } = useAuthUser();
 
   const getAuthHeaders = useCallback(async () => {
     if (!authUser) {
@@ -1109,13 +1195,14 @@ export default function Home() {
       selectedTemplateUrls,
       useMiddleInitial,
       documentType,
+      saveToDriveBackup,
     };
     try {
       localStorage.setItem('appState', JSON.stringify(stateToSave));
     } catch(e) {
       console.error("Could not save state to localStorage", e);
     }
-  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType]);
+  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType, saveToDriveBackup]);
 
   const loadStateFromLocalStorage = useCallback((): AppState | null => {
     try {
@@ -1126,6 +1213,7 @@ export default function Home() {
         return {
           ...parsedState,
           documentType: IS_PDF_OUTPUT_ENABLED && parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
+          saveToDriveBackup: parsedState.saveToDriveBackup !== false,
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -1235,6 +1323,7 @@ const handleGenerateSF9 = useCallback(async (
         selectedTemplateUrls: currentTemplateUrls,
         useMiddleInitial: useMI,
         documentType: currentDocumentType,
+        saveToDriveBackup: shouldSaveToDriveBackup,
     } = generationState;
 
     const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
@@ -1307,17 +1396,36 @@ const handleGenerateSF9 = useCallback(async (
             });
         }
 
-        if (generatedFiles.length === 1) {
-            saveAs(generatedFiles[0].blob, generatedFiles[0].name);
-        } else {
+        let exportBlob = generatedFiles[0].blob;
+        let exportName = generatedFiles[0].name;
+
+        if (generatedFiles.length > 1) {
             const masterZip = new PizZip();
             for (const file of generatedFiles) {
                 const arrayBuffer = await file.blob.arrayBuffer();
                 masterZip.file(file.name, arrayBuffer);
             }
-            const zipBlob = masterZip.generate({ type: "blob" });
-            saveAs(zipBlob, currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip");
+            exportBlob = masterZip.generate({ type: "blob" });
+            exportName = currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip";
         }
+
+        let driveBackupLink: string | undefined;
+        if (shouldSaveToDriveBackup) {
+            try {
+                setLoadingMessage('Saving backup to Google Drive...');
+                const driveAccessToken = await getGoogleDriveAccessToken();
+                const driveFile = await uploadBlobToGoogleDrive(driveAccessToken, exportName, exportBlob);
+                driveBackupLink = driveFile.webViewLink;
+            } catch (driveError: any) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Google Drive Backup Failed',
+                    description: driveError.message || 'The file was generated, but could not be saved to Google Drive.',
+                });
+            }
+        }
+
+        saveAs(exportBlob, exportName);
 
         if (options?.showPaymentRecovery) {
             const checkoutSessionId = localStorage.getItem('checkoutSessionId');
@@ -1344,7 +1452,9 @@ const handleGenerateSF9 = useCallback(async (
         toast({
             variant: 'success',
             title: 'Generation Complete',
-            description: `${generatedFiles.length} ${currentDocumentType.toUpperCase()} document(s) have been generated.`,
+            description: driveBackupLink
+                ? `${exportName} was generated and backed up to Google Drive.`
+                : `${generatedFiles.length} ${currentDocumentType.toUpperCase()} document(s) have been generated.`,
         });
         return true;
 
@@ -1366,7 +1476,7 @@ const handleGenerateSF9 = useCallback(async (
     } finally {
         setIsProcessing(false);
     }
-}, [authUser?.uid, savePaidGenerationTokens, toast]);
+}, [authUser?.uid, getGoogleDriveAccessToken, savePaidGenerationTokens, toast]);
 
 
   useEffect(() => {
@@ -2029,6 +2139,7 @@ const formatPolishedName = (name: string): string => {
       selectedTemplateUrls,
       useMiddleInitial,
       documentType,
+      saveToDriveBackup,
     };
     
     setLoadingMessage('Processing your request...');
@@ -2615,6 +2726,7 @@ const formatPolishedName = (name: string): string => {
                         <ul className="list-disc pl-5 space-y-2">
                             <li><span className="font-semibold">Client-Side Document Processing:</span> Your School Form 1 (SF1) file and the sensitive student data it contains are processed in your browser for document generation.</li>
                             <li><span className="font-semibold">No Data Upload or Storage:</span> The file is read directly by your web browser, and the School Form 9 (SF9) is generated locally on your device. No student data is ever uploaded, sent to, or stored on our servers.</li>
+                            <li><span className="font-semibold">Optional Google Drive Backup:</span> When enabled, the generated document is uploaded directly from your browser to your own Google Drive account using Google Drive permission.</li>
                             <li><span className="font-semibold">Accounts and Tokens:</span> Google sign-in is used to connect token balances, reloads, referrals, sharing activity, and generation reservations to your account.</li>
                             <li><span className="font-semibold">Secure Payment:</span> PayMongo is used only for token reload payments. Student names, LRNs, and generated documents are not sent to PayMongo.</li>
                         </ul>
@@ -2706,6 +2818,7 @@ const formatPolishedName = (name: string): string => {
                         selectedTemplateUrls,
                         useMiddleInitial,
                         documentType,
+                        saveToDriveBackup,
                       }, false, { showPaymentRecovery: true })}
                       className="w-full"
                     >
@@ -3654,6 +3767,13 @@ const formatPolishedName = (name: string): string => {
                                 <div className="flex items-center justify-between rounded-lg border bg-background p-4 text-sm">
                                     <span className="font-semibold">DOCX</span>
                                     <span className="text-xs text-muted-foreground">{TOKENS_PER_STUDENT_FORM} tokens/student</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
+                                    <div>
+                                        <span className="font-semibold">Google Drive Backup</span>
+                                        <p className="text-xs text-muted-foreground">Save a copy to your Google Drive before download.</p>
+                                    </div>
+                                    <Switch checked={saveToDriveBackup} onCheckedChange={setSaveToDriveBackup} />
                                 </div>
                             </div>
                              {uniqueGradeLevels.length > 0 ? (

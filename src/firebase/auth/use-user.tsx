@@ -5,6 +5,7 @@ import {
   onAuthStateChanged,
   User,
   GoogleAuthProvider,
+  reauthenticateWithPopup,
   signInWithPopup,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
@@ -136,6 +137,23 @@ export const useUser = () => {
     }
   };
 
+  const getGoogleDriveAccessToken = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/drive.file');
+    provider.setCustomParameters({ prompt: 'consent' });
+
+    const result = auth.currentUser
+      ? await reauthenticateWithPopup(auth.currentUser, provider)
+      : await signInWithPopup(auth, provider);
+
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      throw new Error('Google Drive permission was not granted.');
+    }
+
+    return credential.accessToken;
+  };
+
   const signOut = async () => {
     await firebaseSignOut(auth);
     setUserState({ user: null, profile: null, isAdmin: false, isSuperAdmin: false, isSchoolAdmin: false, isSchoolHead: false, isUserLoading: false, error: null });
@@ -149,5 +167,5 @@ export const useUser = () => {
     return () => unsubscribe();
   }, [handleUser, auth]);
 
-  return { ...userState, signInWithGoogle, signOut };
+  return { ...userState, signInWithGoogle, getGoogleDriveAccessToken, signOut };
 };
