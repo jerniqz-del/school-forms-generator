@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUserIdFromRequest } from '@/lib/firebase-admin';
 
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
+    await requireUserIdFromRequest(request);
+
     const converterUrl = process.env.DOCX_CONVERTER_URL;
     const converterApiKey = process.env.DOCX_CONVERTER_API_KEY;
 
