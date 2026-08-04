@@ -1,4 +1,4 @@
-export const FREE_SIGNUP_TOKENS = 25;
+export const FREE_SIGNUP_TOKENS = 30;
 export const TOKENS_PER_STUDENT_FORM = 5;
 export const TOKEN_RELOAD_MIN_PESOS = 20;
 export const TOKENS_PER_PESO = 2.5;
