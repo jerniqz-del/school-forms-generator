@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -3665,7 +3665,7 @@ const formatPolishedName = (name: string): string => {
             <div className={cn(step >= 2 ? 'block' : 'hidden')}>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-secondary mb-6 gap-4">
                     <div className="flex items-center gap-3">
-                        <Package className="size-6 text-primary" />
+                        <PackageIcon className="size-6 text-primary" />
                         <div>
                             <p className="font-medium">{filesData.length} file(s) processed</p>
                             <p className="text-xs text-muted-foreground">{totalSelectedStudents} total student(s) selected</p>

@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
-import { Coins, History, LogIn, LogOut, RotateCcw, Share2, Trash2, UserCircle } from "lucide-react";
+import { Coins, History, LogIn, LogOut, RotateCcw, Share2, Trash2, UserCircle, Package as PackageIcon } from "lucide-react";
 
 type AppHeaderProps = {
     availableTokens?: number | null;
@@ -203,7 +203,7 @@ export function AppHeader({
                                       <>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem onClick={() => (window.location.href = '/admin')}>
-                                          <Package className="size-4" />
+                                          <PackageIcon className="size-4" />
                                           Admin
                                         </DropdownMenuItem>
                                       </>
