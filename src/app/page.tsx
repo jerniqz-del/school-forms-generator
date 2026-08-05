@@ -103,6 +103,7 @@ type FileInfo = {
     division?: string;
     region?: string;
     address: string;
+    municipality?: string;
 };
 
 type SharedInfo = {
@@ -110,6 +111,7 @@ type SharedInfo = {
     schoolHead: string;
     schoolHeadDesignation: string;
     district: string;
+    municipality: string;
     division: string;
     region: string;
     address: string;
@@ -141,6 +143,7 @@ const initialSharedInfo: SharedInfo = {
     schoolHead: '',
     schoolHeadDesignation: '',
     district: '',
+    municipality: '',
     division: '',
     region: 'Region V',
     address: '',
@@ -153,6 +156,7 @@ type PreviousInfo = {
     region: string[];
     division: string[];
     district: string[];
+    municipality: string[];
     address: string[];
     school: string[];
     schoolYear: string[];
@@ -164,6 +168,7 @@ const initialPreviousInfo: PreviousInfo = {
     region: [],
     division: [],
     district: [],
+    municipality: [],
     address: [],
     school: [],
     schoolYear: [],
@@ -1248,9 +1253,10 @@ export default function Home() {
             region: parsed.region?.[0] || 'Region V',
             division: parsed.division?.[0] || '',
             district: parsed.district?.[0] || '',
-            address: parsed.address?.[0] || '',
-            schoolYear: parsed.schoolYear?.[0] || '',
-        });
+                    municipality: parsed.municipality?.[0] || '',
+                    address: parsed.address?.[0] || '',
+                    schoolYear: parsed.schoolYear?.[0] || '',
+                });
       }
     } catch (error) {
       console.error("Could not load data from sessionStorage:", error);
@@ -1278,7 +1284,7 @@ export default function Home() {
     // Update with shared info
     (Object.keys(sharedInfo) as Array<keyof SharedInfo>).forEach(key => {
         if (key in newPreviousInfo) {
-            const value = sharedInfo[key];
+                const value = sharedInfo[key as keyof SharedInfo] as string;
             const history = newPreviousInfo[key as keyof PreviousInfo] as string[];
             if (value && !history.includes(value)) {
                 (newPreviousInfo[key as keyof PreviousInfo] as string[]) = [value, ...history].slice(0, MAX_PREVIOUS_INFO);
@@ -1289,7 +1295,7 @@ export default function Home() {
 
     // Update with file-specific info
     filesData.forEach(fileData => {
-        ['school', 'district', 'address'].forEach(key => {
+            ['school', 'district', 'municipality', 'address'].forEach(key => {
             const value = fileData.fileInfo[key as keyof FileInfo];
             const history = newPreviousInfo[key as keyof PreviousInfo] as string[];
             if (value && !history.includes(value)) {
@@ -2167,6 +2173,28 @@ const formatPolishedName = (name: string): string => {
                 }
                 parsedDistrict = toProperCase(parsedDistrict);
 
+                                // Municipality from nearby cells (prefer cell U3 / column 21, fallback to common municipality in student rows)
+                                let parsedMunicipality = String(getCellValue(2, 21) || getCellValue(3, 21) || '').trim();
+                                if (!parsedMunicipality) {
+                                    // try scanning a small region where municipality might appear
+                                    for (let r = 1; r <= 4; r++) {
+                                        for (let c = 18; c <= 24; c++) {
+                                            const val = String(getCellValue(r, c) || '').trim();
+                                            if (val && !val.toLowerCase().includes('school') && !val.toLowerCase().includes('division') && !val.toLowerCase().includes('region')) {
+                                                parsedMunicipality = val;
+                                                break;
+                                            }
+                                        }
+                                        if (parsedMunicipality) break;
+                                    }
+                                }
+
+                                if (!parsedMunicipality && mostCommonMunicipality) {
+                                    parsedMunicipality = mostCommonMunicipality;
+                                }
+
+                                parsedMunicipality = toProperCase(parsedMunicipality);
+
                 // Division from cell T3 (column 19)
                 let parsedDivision = String(getCellValue(2, 19) || getCellValue(3, 19) || '').trim();
                 if (!parsedDivision) {
@@ -2221,10 +2249,12 @@ const formatPolishedName = (name: string): string => {
                         adviser: adviser,
                         school: parsedSchool,
                         district: parsedDistrict,
+                        municipality: parsedMunicipality,
                         division: parsedDivision,
                         region: parsedRegion,
                         address: toProperCase(mostCommonMunicipality),
                     },
+
                     selectedRows: new Set(extractedData.map(s => s.LRN)),
                     searchTerm: '',
                 });
@@ -3096,6 +3126,7 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label="Region" value={sharedInfo.region} />
                 <SummaryItem label="Division" value={sharedInfo.division} />
                 <SummaryItem label="District" value={sharedInfo.district} />
+                <SummaryItem label="Municipality" value={sharedInfo.municipality} />
                 <SummaryItem label="School Year" value={sharedInfo.schoolYear} />
                 <SummaryItem label="School Logo" value={croppedLogo ? "Included" : "Not Included"} />
                 <div className="pt-4">
@@ -3971,6 +4002,24 @@ const formatPolishedName = (name: string): string => {
                                 <Input id="district" value={sharedInfo.district} placeholder="e.g. Oas North" onChange={(e) => handleSharedInfoChange('district', toProperCase(e.target.value))} className={cn(!sharedInfo.district && 'border-destructive')} />
                                 <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">Proper Case</span> (e.g. Oas North)</p>
                                 <HistoryBadges items={previousInfo.district} onSelect={(value) => handleSharedInfoChange('district', value)} />
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="municipality">Municipality</Label>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-semibold text-xs">Formatting Requirement:</p>
+                                      <p className="text-xs">Municipality or City name. Use <strong>Proper Case</strong>. Auto-extracted from SF1 U3 cell or inferred from student rows.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <Input id="municipality" value={sharedInfo.municipality} placeholder="e.g. Irosin" onChange={(e) => handleSharedInfoChange('municipality', toProperCase(e.target.value))} className={cn(!sharedInfo.municipality && 'border-destructive')} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">Proper Case</span> (e.g. Irosin)</p>
+                                <HistoryBadges items={previousInfo.municipality} onSelect={(value) => handleSharedInfoChange('municipality', value)} />
                               </div>
 
                               <div className="space-y-1.5">
