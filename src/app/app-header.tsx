@@ -43,7 +43,7 @@ export function AppHeader({
     onOpenTokenHistory,
     onResetAccount,
 }: AppHeaderProps) {
-    const { user, isUserLoading, signInWithGoogle, signOut } = useUser();
+    const { user, isUserLoading, isAdmin, signInWithGoogle, signOut } = useUser();
     const { toast } = useToast();
     const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -199,6 +199,15 @@ export function AppHeader({
                                         <Trash2 className="size-4" />
                                         Delete account
                                     </DropdownMenuItem>
+                                    {isAdmin && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => (window.location.href = '/admin')}>
+                                          <Package className="size-4" />
+                                          Admin
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={signOut}>
                                         <LogOut className="size-4" />
