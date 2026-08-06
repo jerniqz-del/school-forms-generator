@@ -136,4 +136,6 @@ function AdminPage() {
   );
 }
 
-export default withAuth(AdminPage);
+// Admin UI disabled
+export default function DisabledAdmin() { return null };
+

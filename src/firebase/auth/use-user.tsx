@@ -96,7 +96,7 @@ export const useUser = () => {
                 const superAdminData: UserProfile = {
                     uid: user.uid,
                     displayName: user.displayName,
-                    email: user.email,
+                    email: user.email?.toLowerCase() || null,
                     photoURL: user.photoURL,
                     lastLogin: serverTimestamp(),
                     role: 'super_admin',
@@ -116,7 +116,7 @@ export const useUser = () => {
                  const newViewerData: UserProfile = {
                     uid: user.uid,
                     displayName: user.displayName,
-                    email: user.email,
+                    email: user.email?.toLowerCase() || null,
                     photoURL: user.photoURL,
                     lastLogin: serverTimestamp(),
                     role: 'viewer',

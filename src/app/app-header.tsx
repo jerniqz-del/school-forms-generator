@@ -199,15 +199,7 @@ export function AppHeader({
                                         <Trash2 className="size-4" />
                                         Delete account
                                     </DropdownMenuItem>
-                                    {isAdmin && (
-                                      <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => (window.location.href = '/admin')}>
-                                          <PackageIcon className="size-4" />
-                                          Admin
-                                        </DropdownMenuItem>
-                                      </>
-                                    )}
+                                    {/* Admin link removed while admin features are disabled */}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={signOut}>
                                         <LogOut className="size-4" />

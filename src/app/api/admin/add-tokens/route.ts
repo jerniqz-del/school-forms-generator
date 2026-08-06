@@ -24,13 +24,21 @@ export async function POST(request: NextRequest) {
     const FieldValue = await getAdminFieldValue();
 
     const normalized = email.trim().toLowerCase();
+    // Find or create the user doc by email. If not found, we'll create a wallet with a generated uid (use email hash)
     const usersQuery = await db.collection('users').where('email', '==', normalized).limit(1).get();
-    if (usersQuery.empty) {
-      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
-    }
+    let uid: string;
 
-    const userDoc = usersQuery.docs[0];
-    const uid = userDoc.id;
+    if (usersQuery.empty) {
+      // Create a deterministic doc id for anonymous user wallets based on email hash
+      const crypto = await import('crypto');
+      const id = crypto.createHash('sha256').update(normalized).digest('hex');
+      uid = id;
+      // Create a minimal user doc so wallet can reference it
+      await db.collection('users').doc(uid).set({ email: normalized, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+    } else {
+      const userDoc = usersQuery.docs[0];
+      uid = userDoc.id;
+    }
 
     const walletRef = db.collection('tokenWallets').doc(uid);
     const ledgerRef = db.collection('tokenLedger').doc();
@@ -39,6 +47,8 @@ export async function POST(request: NextRequest) {
       const walletSnap = await transaction.get(walletRef);
       if (!walletSnap.exists) {
         transaction.set(walletRef, {
+          uid,
+          email: normalized,
           tokens: amount,
           reservedTokens: 0,
           shareableTokens: 0,
