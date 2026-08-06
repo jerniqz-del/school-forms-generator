@@ -1,10 +1,10 @@
-
+﻿
 
 'use client';
 
 import { useState, useRef, ReactNode, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import Bearer  as XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
 import ReactCrop, { type Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import Docxtemplater from 'docxtemplater';
@@ -469,354 +469,9 @@ const HistoryBadges = ({
 };
 
 
-const TemplatePreviewCard = ({
-  gradeLevel,
-  templateName,
-  schoolLogo,
-  schoolName,
-  adviserName,
-  schoolHead,
-  schoolHeadDesignation,
-  region,
-  division,
-  section,
-  schoolYear,
-  sampleStudent,
-  selectedCount,
-  templateUrl,
-  fileData,
-  sharedInfo,
-  useMiddleInitial,
-}: {
-  gradeLevel: string;
-  templateName: string | null;
-  schoolLogo: string | null;
-  schoolName: string;
-  adviserName: string;
-  schoolHead: string;
-  schoolHeadDesignation: string;
-  region: string;
-  division: string;
-  section: string;
-  schoolYear: string;
-  sampleStudent: StudentRecord | null;
-  selectedCount: number;
-  templateUrl: string | null;
-  fileData: FileData | null;
-  sharedInfo: SharedInfo;
-  useMiddleInitial: boolean;
-}) => {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
-  useEffect(() => {
-    if (!IS_LIVE_PDF_PREVIEW_ENABLED || !templateUrl || !fileData || fileData.selectedRows.size === 0) {
-      setPreviewStatus('idle');
-      setPreviewUrl(prev => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      return;
-    }
-
-    let isCancelled = false;
-    let objectUrl: string | null = null;
-    setPreviewStatus('loading');
-
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const { blob } = await buildSf9DocxBlob({
-          templateUrl,
-          fileData,
-          sharedInfo,
-          croppedLogo: schoolLogo,
-          useMiddleInitial,
-          previewOnly: true,
-        });
-
-        const formData = new FormData();
-        formData.append('file', blob, `preview_${gradeLevel}.docx`);
-
-        const response = await fetch('/api/convert-docx-to-pdf', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error('Preview conversion failed.');
-        }
-
-        const pdfBlob = await response.blob();
-        objectUrl = URL.createObjectURL(pdfBlob);
-
-        if (!isCancelled) {
-          setPreviewUrl(prev => {
-            if (prev) URL.revokeObjectURL(prev);
-            return objectUrl;
-          });
-          setPreviewStatus('ready');
-          objectUrl = null;
-        }
-      } catch (error) {
-        console.error('Preview generation failed:', error);
-        if (!isCancelled) {
-          setPreviewStatus('error');
-          setPreviewUrl(prev => {
-            if (prev) URL.revokeObjectURL(prev);
-            return null;
-          });
-        }
-      }
-    }, 900);
-
-    return () => {
-      isCancelled = true;
-      window.clearTimeout(timeoutId);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [
-    templateUrl,
-    fileData,
-    sharedInfo,
-    schoolLogo,
-    useMiddleInitial,
-    gradeLevel,
-    sampleStudent?.LRN,
-    selectedCount,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
-
-  if (!templateName) {
-    return (
-      <div className="w-[180px] h-[240px] border border-dashed rounded-lg flex flex-col items-center justify-center bg-muted/10 text-muted-foreground p-3 transition-colors hover:bg-muted/20">
-        <FileIcon className="size-8 stroke-[1.2] mb-2 animate-pulse text-muted-foreground/50" />
-        <span className="text-[11px] font-semibold text-center">No Template Selected</span>
-        <span className="text-[9px] text-center opacity-75 mt-1 leading-normal">Choose layout to see a visual mockup</span>
-      </div>
-    );
-  }
-
-  if (previewStatus === 'ready' && previewUrl) {
-    return (
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <button
-          type="button"
-          onClick={() => setIsPreviewOpen(true)}
-          className="w-[180px] h-[240px] border rounded-lg bg-background overflow-hidden shadow-sm relative text-left transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label={`Open enlarged preview for Grade ${gradeLevel}`}
-        >
-          <iframe
-            title={`Live preview for Grade ${gradeLevel}`}
-            src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-            className="h-full w-full bg-white pointer-events-none"
-          />
-          <div className="absolute left-2 top-2 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-semibold text-primary shadow-sm">
-            Live Preview
-          </div>
-          <div className="absolute bottom-2 left-2 right-2 rounded bg-background/90 px-1.5 py-0.5 text-center text-[9px] font-medium text-foreground shadow-sm">
-            Click to enlarge
-          </div>
-        </button>
-        <DialogContent className="max-w-5xl h-[90vh] p-0 overflow-hidden">
-          <DialogHeader className="px-5 py-4 border-b">
-            <DialogTitle>Grade {gradeLevel} Preview</DialogTitle>
-            <DialogDescription>
-              Rendered from the selected DOCX template using the current data.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="h-[calc(90vh-97px)] bg-muted">
-            <iframe
-              title={`Enlarged live preview for Grade ${gradeLevel}`}
-              src={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
-              className="h-full w-full bg-white"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  const isKinder = templateName.toLowerCase().includes('kinder');
-  const isPECD = templateName.toLowerCase().includes('pecd');
-  const isSHS = templateName.toLowerCase().includes('eleven') || templateName.toLowerCase().includes('twelve');
-  
-  let typeLabel = "Elementary Report Card";
-  let subjectList = ["English", "Mathematics", "Science", "Filipino", "MAPEH"];
-  let primaryColor = "border-t-emerald-500";
-  let badgeColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400";
-
-  if (isPECD) {
-    typeLabel = "Kinder PECD Card";
-    subjectList = ["Gross Motor", "Fine Motor", "Self-Help", "Receptive Lang"];
-    primaryColor = "border-t-pink-500";
-    badgeColor = "bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-400";
-  } else if (isKinder) {
-    typeLabel = "Kinder Report Card";
-    subjectList = ["Socio-Emotional", "Language & Literacy", "Mathematics", "Physical Health"];
-    primaryColor = "border-t-purple-500";
-    badgeColor = "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400";
-  } else if (isSHS) {
-    typeLabel = "SHS Report Card";
-    subjectList = ["Oral Communication", "General Mathematics", "Earth & Life Science", "Empowerment Tech"];
-    primaryColor = "border-t-amber-500";
-    badgeColor = "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400";
-  } else if (['seven', 'eight', 'nine', 'ten'].some(g => gradeLevel.toLowerCase().includes(g) || templateName.toLowerCase().includes(g))) {
-    typeLabel = "Junior High School";
-    subjectList = ["English", "Mathematics", "Science", "Araling Panlipunan", "MAPEH", "TLE"];
-    primaryColor = "border-t-blue-500";
-    badgeColor = "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400";
-  }
-
+const TemplatePreviewCard = ({ gradeLevel, templateName }) => {
   return (
-    <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-      <button
-        type="button"
-        onClick={() => setIsPreviewOpen(true)}
-        className={cn(
-          "group w-[180px] h-[240px] border rounded-lg bg-white text-[8px] text-gray-800 p-2.5 shadow-sm relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:shadow-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-          "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
-          "border-t-4", primaryColor
-        )}
-        aria-label={`Open enlarged preview for Grade ${gradeLevel}`}
-      >
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
-        <FileIcon className="size-24" />
-      </div>
-      {previewStatus === 'loading' && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/85 text-primary backdrop-blur-[1px] dark:bg-slate-900/85">
-          <Loader2 className="size-5 animate-spin" />
-          <span className="mt-1 text-[9px] font-semibold">Rendering preview</span>
-        </div>
-      )}
-      {previewStatus === 'error' && (
-        <div className="absolute left-2 right-2 top-2 z-10 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[8px] font-medium text-amber-800 shadow-sm">
-          Live preview unavailable
-        </div>
-      )}
-
-      <div className="space-y-0.5 text-center border-b pb-1 border-gray-100 dark:border-slate-800">
-        <p className="text-[5.5px] uppercase tracking-wider text-gray-400 font-semibold leading-none">Republic of the Philippines</p>
-        <p className="text-[6.5px] font-bold uppercase tracking-wide text-gray-600 dark:text-slate-400 leading-normal">Department of Education</p>
-        {region && <p className="text-[5.5px] text-gray-500 leading-none">{region}</p>}
-        {division && <p className="text-[5.5px] text-gray-500 leading-none">{division}</p>}
-        
-        <div className="flex items-center justify-center gap-1 mt-0.5 px-0.5">
-          {schoolLogo ? (
-            <img src={schoolLogo} alt="School Logo" className="size-3.5 rounded-full object-cover border border-gray-100 dark:border-slate-800" />
-          ) : (
-            <div className="size-3.5 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-[5px] text-gray-400 font-bold border border-gray-200 dark:border-slate-700 leading-none">Logo</div>
-          )}
-          <span className="text-[6px] font-bold truncate max-w-[120px] uppercase text-gray-700 dark:text-slate-300">
-            {schoolName || "YOUR SCHOOL NAME"}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex-1 py-1 flex flex-col justify-between min-h-0">
-        <div className="flex items-center justify-between pt-0.5">
-          <span className={cn("text-[6px] px-1 py-0.5 rounded-full font-bold uppercase tracking-wider leading-none", badgeColor)}>
-            {typeLabel}
-          </span>
-          <span className="text-[6px] text-gray-400 font-mono">SF9</span>
-        </div>
-        
-        <p className="text-[6px] text-center font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider py-0.5">PROGRESS REPORT CARD</p>
-
-        <div className="rounded border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-slate-950/20 p-1 leading-tight">
-          <div className="grid grid-cols-12 gap-x-1 gap-y-0.5">
-            <span className="col-span-4 text-[5px] text-gray-400">Learner</span>
-            <span className="col-span-8 truncate text-[5.5px] font-bold uppercase text-gray-700 dark:text-slate-300">
-              {sampleStudent?.Name || 'Selected learner'}
-            </span>
-            <span className="col-span-4 text-[5px] text-gray-400">LRN</span>
-            <span className="col-span-8 truncate text-[5.5px] font-mono text-gray-600 dark:text-slate-300">
-              {sampleStudent?.LRN || '000000000000'}
-            </span>
-            <span className="col-span-4 text-[5px] text-gray-400">Class</span>
-            <span className="col-span-8 truncate text-[5.5px] font-semibold text-gray-600 dark:text-slate-300">
-              Grade {gradeLevel}{section ? ` - ${section}` : ''}
-            </span>
-          </div>
-        </div>
-
-        <div className="border rounded border-gray-100 dark:border-slate-800 overflow-hidden bg-gray-50/50 dark:bg-slate-950/20 max-h-[85px] min-h-[50px] flex flex-col justify-between">
-          <div className="grid grid-cols-12 bg-gray-100 dark:bg-slate-800 p-0.5 text-[5.5px] font-bold text-gray-500 dark:text-slate-400 uppercase">
-            <span className="col-span-8">Learning Areas</span>
-            <span className="col-span-4 text-center">Grade</span>
-          </div>
-          <div className="divide-y divide-gray-100 dark:divide-slate-800 flex-1 flex flex-col justify-around">
-            {subjectList.slice(0, 4).map((sub, idx) => (
-              <div key={sub} className="grid grid-cols-12 p-0.5 leading-none items-center">
-                <span className="col-span-8 font-medium truncate text-[6px] text-gray-600 dark:text-slate-300">{sub}</span>
-                <span className="col-span-4 text-center font-mono font-bold text-primary text-[6.5px]">{86 + (idx Bearer  3)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1 border-t pt-1 border-gray-100 dark:border-slate-800 text-[5px] mt-0.5 leading-tight">
-          <div className="min-w-0">
-            <p className="text-gray-400 leading-none">Class Adviser</p>
-            <p className="font-bold text-gray-700 dark:text-slate-300 truncate uppercase mt-0.5">{adviserName || "Adviser Name"}</p>
-          </div>
-          <div className="text-right min-w-0">
-            <p className="text-gray-400 leading-none">{schoolHeadDesignation || "School Head"}</p>
-            <p className="font-bold text-gray-700 dark:text-slate-300 truncate uppercase mt-0.5">{schoolHead || "School Head Name"}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center pt-0.5 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center text-[5px] text-gray-400">
-        <span className="truncate max-w-[108px] font-medium leading-none">{selectedCount} selected{schoolYear ? ` - ${schoolYear}` : ''}</span>
-        <span className="font-mono bg-gray-100 dark:bg-slate-800 px-0.5 py-0.2 rounded text-[4.5px] uppercase">.docx</span>
-      </div>
-      <div className="absolute bottom-2 left-2 right-2 rounded bg-background/90 px-1.5 py-0.5 text-center text-[9px] font-medium text-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
-        Click to enlarge
-      </div>
-    </button>
-    <DialogContent className="max-w-3xl">
-      <DialogHeader>
-        <DialogTitle>Grade {gradeLevel} Preview</DialogTitle>
-        <DialogDescription>
-          Visual mockup only. Live PDF preview is temporarily disabled.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="flex justify-center rounded-lg bg-muted/30 p-6">
-        <div className={cn(
-          "w-[360px] h-[480px] origin-center scale-100 border rounded-lg bg-white text-gray-800 p-5 shadow-sm relative flex flex-col justify-between overflow-hidden",
-          "dark:bg-slate-900 dark:text-slate-200 dark:border-slate-800",
-          "border-t-4", primaryColor
-        )}>
-          <div className="text-center text-sm font-semibold">{schoolName || "YOUR SCHOOL NAME"}</div>
-          <div className="text-center text-xs text-muted-foreground">Grade {gradeLevel}{section ? ` - ${section}` : ''}</div>
-          <div className="rounded border p-3 text-sm">
-            <div className="font-semibold uppercase">{sampleStudent?.Name || 'Selected learner'}</div>
-            <div className="text-xs text-muted-foreground">LRN: {sampleStudent?.LRN || '000000000000'}</div>
-          </div>
-          <div className="rounded border p-3 text-sm">
-            <div className="font-semibold">Template</div>
-            <div className="text-xs text-muted-foreground">{templateName}</div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <div className="text-muted-foreground">Class Adviser</div>
-              <div className="font-semibold">{adviserName || 'Adviser Name'}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-muted-foreground">{schoolHeadDesignation || 'School Head'}</div>
-              <div className="font-semibold">{schoolHead || 'School Head Name'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </DialogContent>
-    </Dialog>
+    <div className="w-[180px] h-[240px] border rounded-lg flex items-center justify-center">Preview</div>
   );
 };
 
@@ -1129,12 +784,12 @@ export default function Home() {
   const { signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly } = useAuthUser();
 
   const getAuthHeaders = useCallback(async (forceRefresh = false) => {
-  if (!authUser) {
-    throw new Error('Sign in is required.');
-  }
-  const token = await authUser.getIdToken(forceRefresh);
-  return { Authorization: `Bearer ${token}` };
-}, [authUser]);
+    if (!authUser) {
+      throw new Error('Sign in is required.');
+    }
+    const token = await authUser.getIdToken(forceRefresh);
+    return { Authorization: `Bearer ${token}` };
+  }, [authUser]);
 
   const readApiError = async (response: Response, fallback: string) => {
     const contentType = response.headers.get('content-type') || '';
@@ -2747,8 +2402,8 @@ const formatPolishedName = (name: string): string => {
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
     
-    canvas.width = completedCrop.width;
-    canvas.height = completedCrop.height;
+    canvas.width = Math.round(completedCrop.width * pixelRatio);
+    canvas.height = Math.round(completedCrop.height * pixelRatio);
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
@@ -2756,21 +2411,21 @@ const formatPolishedName = (name: string): string => {
     }
 
     const pixelRatio = window.devicePixelRatio;
-    canvas.width = completedCrop.width Bearer  pixelRatio;
-    canvas.height = completedCrop.height Bearer  pixelRatio;
+    canvas.width = Math.round(completedCrop.width * pixelRatio);
+    canvas.height = Math.round(completedCrop.height * pixelRatio);
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     ctx.imageSmoothingQuality = 'high';
 
     ctx.drawImage(
       image,
-      completedCrop.x Bearer  scaleX,
-      completedCrop.y Bearer  scaleY,
-      completedCrop.width Bearer  scaleX,
-      completedCrop.height Bearer  scaleY,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
       0,
       0,
-      completedCrop.width,
-      completedCrop.height
+      Math.round(completedCrop.width * pixelRatio),
+      Math.round(completedCrop.height * pixelRatio)
     );
     
     const newLogo = canvas.toDataURL('image/png');
@@ -4286,6 +3941,8 @@ const formatPolishedName = (name: string): string => {
     </TooltipProvider>
   );
 }
+
+
 
 
 
