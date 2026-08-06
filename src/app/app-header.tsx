@@ -199,7 +199,7 @@ export function AppHeader({
                                         <Trash2 className="size-4" />
                                         Delete account
                                     </DropdownMenuItem>
-                                    {/* Admin link removed while admin features are disabled */}
+                                    {/Bearer  Admin link removed while admin features are disabled Bearer /}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={signOut}>
                                         <LogOut className="size-4" />
@@ -265,3 +265,4 @@ export function AppHeader({
         </>
     );
 }
+

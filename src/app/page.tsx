@@ -4,7 +4,7 @@
 
 import { useState, useRef, ReactNode, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import * as XLSX from 'xlsx';
+import Bearer  as XLSX from 'xlsx';
 import ReactCrop, { type Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import Docxtemplater from 'docxtemplater';
@@ -258,7 +258,7 @@ let schoolYears = Array.from({ length: 5 }, (_, i) => `${2025 + i}-${2026 + i}`)
 const formatNameWithMiddleInitialForDocx = (name: string): string => {
     const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
     let cleanedName = name.trim().toUpperCase()
-        .replace(/\s*,\s*/g, ", ")
+        .replace(/\sBearer ,\sBearer /g, ", ")
         .replace(/ , -/g, '')
         .replace(/\s+/g, ' ');
 
@@ -754,7 +754,7 @@ const TemplatePreviewCard = ({
             {subjectList.slice(0, 4).map((sub, idx) => (
               <div key={sub} className="grid grid-cols-12 p-0.5 leading-none items-center">
                 <span className="col-span-8 font-medium truncate text-[6px] text-gray-600 dark:text-slate-300">{sub}</span>
-                <span className="col-span-4 text-center font-mono font-bold text-primary text-[6.5px]">{86 + (idx * 3)}</span>
+                <span className="col-span-4 text-center font-mono font-bold text-primary text-[6.5px]">{86 + (idx Bearer  3)}</span>
               </div>
             ))}
           </div>
@@ -1128,13 +1128,13 @@ export default function Home() {
   const { user: authUser, isUserLoading } = useFirebaseUser();
   const { signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly } = useAuthUser();
 
-  const getAuthHeaders = useCallback(async () => {
-    if (!authUser) {
-      throw new Error('Sign in is required.');
-    }
-    const token = await authUser.getIdToken();
-    return { Authorization: `Bearer ${token}` };
-  }, [authUser]);
+  const getAuthHeaders = useCallback(async (forceRefresh = false) => {
+  if (!authUser) {
+    throw new Error('Sign in is required.');
+  }
+  const token = await authUser.getIdToken(forceRefresh);
+  return { Authorization: `Bearer ${token}` };
+}, [authUser]);
 
   const readApiError = async (response: Response, fallback: string) => {
     const contentType = response.headers.get('content-type') || '';
@@ -1400,7 +1400,7 @@ const formatNameWithMiddleInitial = (name: string): string => {
     const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
     
     let cleanedName = name.trim().toUpperCase()
-        .replace(/\s*,\s*/g, ", ") // Normalize commas
+        .replace(/\sBearer ,\sBearer /g, ", ") // Normalize commas
         .replace(/ , -/g, '')
         .replace(/\s+/g, ' ');
 
@@ -1875,7 +1875,7 @@ const handleGenerateSF9 = useCallback(async (
 
   const toProperCase = (str: string) => {
     if (!str) return '';
-    return str.replace(/\w\S*/g, (txt) => {
+    return str.replace(/\w\SBearer /g, (txt) => {
       if (/^[IVXLCDM]+$/i.test(txt)) {
         return txt.toUpperCase();
       }
@@ -2127,7 +2127,7 @@ const formatPolishedName = (name: string): string => {
 
                   const rawName = String(row[2] || '');
                   const ageValue = Math.floor(Number(row[9] || 0));
-                  const barangay = String(row[17] || '').replace(/\s*\(\s*Pob\.\s*\)/i, '').toUpperCase();
+                  const barangay = String(row[17] || '').replace(/\sBearer \(\sBearer Pob\.\sBearer \)/i, '').toUpperCase();
 
                   extractedData.push({
                     LRN: String(row[0]).split('.')[0],
@@ -2169,7 +2169,7 @@ const formatPolishedName = (name: string): string => {
                 }
 
                 if (parsedDistrict.toLowerCase().startsWith('district')) {
-                    parsedDistrict = parsedDistrict.replace(/^district\s*[:\s-]*\s*/i, '').trim();
+                    parsedDistrict = parsedDistrict.replace(/^district\sBearer [:\s-]Bearer \sBearer /i, '').trim();
                 }
                 parsedDistrict = toProperCase(parsedDistrict);
 
@@ -2210,7 +2210,7 @@ const formatPolishedName = (name: string): string => {
                     }
                 }
                 if (parsedDivision.toLowerCase().startsWith('division')) {
-                    parsedDivision = parsedDivision.replace(/^(division\s+of\s+|division\s*[:\s-]*\s*)/i, '').trim();
+                    parsedDivision = parsedDivision.replace(/^(division\s+of\s+|division\sBearer [:\s-]Bearer \sBearer )/i, '').trim();
                 }
                 parsedDivision = parsedDivision.toUpperCase();
 
@@ -2756,17 +2756,17 @@ const formatPolishedName = (name: string): string => {
     }
 
     const pixelRatio = window.devicePixelRatio;
-    canvas.width = completedCrop.width * pixelRatio;
-    canvas.height = completedCrop.height * pixelRatio;
+    canvas.width = completedCrop.width Bearer  pixelRatio;
+    canvas.height = completedCrop.height Bearer  pixelRatio;
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     ctx.imageSmoothingQuality = 'high';
 
     ctx.drawImage(
       image,
-      completedCrop.x * scaleX,
-      completedCrop.y * scaleY,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY,
+      completedCrop.x Bearer  scaleX,
+      completedCrop.y Bearer  scaleY,
+      completedCrop.width Bearer  scaleX,
+      completedCrop.height Bearer  scaleY,
       0,
       0,
       completedCrop.width,
@@ -4052,7 +4052,7 @@ const formatPolishedName = (name: string): string => {
                                 <Label>School Logo</Label>
                                 <div className="flex items-start gap-4">
                                   <div className="flex flex-col items-center gap-2">
-                                    <Input id="logo-upload" ref={logoInputRef} type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                    <Input id="logo-upload" ref={logoInputRef} type="file" className="hidden" accept="image/Bearer " onChange={handleLogoUpload} />
                                     {croppedLogo ? (
                                       <Image src={croppedLogo} alt="School Logo" width={64} height={64} className="rounded-md border p-1 bg-white" />
                                     ) : (
@@ -4286,3 +4286,6 @@ const formatPolishedName = (name: string): string => {
     </TooltipProvider>
   );
 }
+
+
+
