@@ -845,7 +845,19 @@ export default function Home() {
       });
 
       if (!verifyResponse.ok) {
-        throw new Error(await readApiError(verifyResponse, 'Could not verify token reload payment.'));
+        const errorMessage = await readApiError(verifyResponse, 'Could not verify token reload payment.');
+        const isUnrecoverableSessionError =
+          verifyResponse.status === 400 ||
+          verifyResponse.status === 404 ||
+          errorMessage.toLowerCase().includes('requested route does not exist') ||
+          errorMessage.toLowerCase().includes('session not found');
+
+        if (isUnrecoverableSessionError) {
+          localStorage.removeItem('tokenReloadCheckoutSessionId');
+          localStorage.removeItem('tokenReloadNeedsVerification');
+        }
+
+        throw new Error(errorMessage);
       }
 
       const verifyData = await verifyResponse.json().catch(() => null);
@@ -888,9 +900,14 @@ export default function Home() {
     if (typeof window === 'undefined') return;
     if (isUserLoading || !authUser || tokenReloadVerificationAttemptedRef.current) return;
 
+    const needsVerification = localStorage.getItem('tokenReloadNeedsVerification') === 'true';
     const checkoutSessionId = localStorage.getItem('tokenReloadCheckoutSessionId');
 
-    if (!checkoutSessionId) return;
+    if (!needsVerification) return;
+    if (!checkoutSessionId) {
+      localStorage.removeItem('tokenReloadNeedsVerification');
+      return;
+    }
 
     tokenReloadVerificationAttemptedRef.current = true;
     verifyTokenReload(checkoutSessionId);
