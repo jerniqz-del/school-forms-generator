@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, Eye } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -472,12 +472,46 @@ const HistoryBadges = ({
 type TemplatePreviewCardProps = {
   gradeLevel: string;
   templateName: string | null;
+  selectedCount: number;
+  sampleStudent: StudentRecord | null;
+  isPreviewLoading: boolean;
+  onPreview: () => void;
   [key: string]: unknown;
 };
 
-const TemplatePreviewCard = ({ gradeLevel, templateName }: TemplatePreviewCardProps) => {
+const TemplatePreviewCard = ({
+  gradeLevel,
+  templateName,
+  selectedCount,
+  sampleStudent,
+  isPreviewLoading,
+  onPreview,
+}: TemplatePreviewCardProps) => {
+  const canPreview = Boolean(templateName && sampleStudent && selectedCount > 0);
+
   return (
-    <div className="w-[180px] h-[240px] border rounded-lg flex items-center justify-center">Preview</div>
+    <div className="flex h-[240px] w-[180px] flex-col justify-between rounded-lg border bg-background p-3 shadow-sm">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Badge variant="outline" className="text-[10px]">Grade {gradeLevel}</Badge>
+          <FileText className="size-4 text-muted-foreground" />
+        </div>
+        <div>
+          <p className="line-clamp-2 text-sm font-semibold">{templateName || 'No template selected'}</p>
+          <p className="mt-1 text-xs text-muted-foreground">First selected learner only</p>
+        </div>
+      </div>
+
+      <div className="rounded border border-dashed bg-muted/30 p-2 text-xs">
+        <p className="font-medium text-foreground">{sampleStudent?.Name || 'Select a learner'}</p>
+        <p className="mt-1 text-muted-foreground">{selectedCount} selected</p>
+      </div>
+
+      <Button type="button" size="sm" onClick={onPreview} disabled={!canPreview || isPreviewLoading} className="gap-2">
+        {isPreviewLoading ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+        Preview
+      </Button>
+    </div>
   );
 };
 
@@ -771,7 +805,11 @@ export default function Home() {
   const [shareEmail, setShareEmail] = useState('');
   const [shareTokenAmount, setShareTokenAmount] = useState(5);
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState('First Learner Preview');
+  const [previewLoadingKey, setPreviewLoadingKey] = useState<string | null>(null);
   const tokenReloadVerificationAttemptedRef = useRef(false);
+  const previewPdfUrlRef = useRef<string | null>(null);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -782,6 +820,23 @@ export default function Home() {
   useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrlRef.current) {
+        URL.revokeObjectURL(previewPdfUrlRef.current);
+      }
+    };
+  }, []);
+
+  const closePreviewDialog = useCallback(() => {
+    if (previewPdfUrlRef.current) {
+      URL.revokeObjectURL(previewPdfUrlRef.current);
+      previewPdfUrlRef.current = null;
+    }
+    setPreviewPdfUrl(null);
+  }, []);
+
 
   const [useMiddleInitial, setUseMiddleInitial] = useState(true);
 
@@ -796,6 +851,78 @@ export default function Home() {
     const token = await authUser.getIdToken(forceRefresh);
     return { Authorization: `Bearer ${token}` };
   }, [authUser]);
+
+  const handlePreviewFirstLearner = useCallback(async ({
+    gradeLevel,
+    templateUrl,
+    fileData,
+  }: {
+    gradeLevel: string;
+    templateUrl: string | null;
+    fileData: FileData | null;
+  }) => {
+    if (!templateUrl || !fileData) {
+      toast({
+        variant: 'destructive',
+        title: 'Preview Unavailable',
+        description: 'Select a template and a processed file before previewing.',
+      });
+      return;
+    }
+
+    const selectedStudents = fileData.studentData.filter(student => fileData.selectedRows.has(student.LRN));
+    if (selectedStudents.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Preview Unavailable',
+        description: 'Select at least one learner before previewing.',
+      });
+      return;
+    }
+
+    setPreviewLoadingKey(gradeLevel);
+    try {
+      const { blob } = await buildSf9DocxBlob({
+        templateUrl,
+        fileData,
+        sharedInfo,
+        croppedLogo,
+        useMiddleInitial,
+        previewOnly: true,
+      });
+
+      const docxName = 'SF9_' + gradeLevel + '_' + (fileData.fileInfo.section || 'Preview') + '_preview.docx';
+      const formData = new FormData();
+      formData.append('file', blob, docxName);
+
+      const headers = await getAuthHeaders();
+      const conversionResponse = await fetch('/api/convert-docx-to-pdf', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!conversionResponse.ok) {
+        const errorData = await conversionResponse.json().catch(() => null);
+        throw new Error(errorData?.error || 'Could not render the preview PDF.');
+      }
+
+      const pdfBlob = await conversionResponse.blob();
+      const nextUrl = URL.createObjectURL(pdfBlob);
+      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
+      previewPdfUrlRef.current = nextUrl;
+      setPreviewTitle('Grade ' + gradeLevel + ' - ' + selectedStudents[0].Name);
+      setPreviewPdfUrl(nextUrl);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Preview Failed',
+        description: error.message || 'Could not generate the first learner preview.',
+      });
+    } finally {
+      setPreviewLoadingKey(null);
+    }
+  }, [croppedLogo, getAuthHeaders, sharedInfo, toast, useMiddleInitial]);
 
   const readApiError = async (response: Response, fallback: string) => {
     const contentType = response.headers.get('content-type') || '';
@@ -2570,6 +2697,30 @@ const formatPolishedName = (name: string): string => {
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
 
+        <Dialog open={Boolean(previewPdfUrl)} onOpenChange={(open) => { if (!open) closePreviewDialog(); }}>
+          <DialogContent className="max-w-5xl">
+            <DialogHeader>
+              <DialogTitle>{previewTitle}</DialogTitle>
+              <DialogDescription>
+                Exact preview generated from the selected template. Only the first selected learner is shown.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="relative h-[75vh] overflow-hidden rounded-lg border bg-muted">
+              {previewPdfUrl && (
+                <iframe
+                  src={previewPdfUrl}
+                  title={previewTitle}
+                  className="h-full w-full bg-background"
+                />
+              )}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="-rotate-45 select-none rounded border-4 border-destructive/25 bg-background/45 px-10 py-4 text-5xl font-black uppercase tracking-widest text-destructive/35 shadow-sm">
+                  PREVIEW ONLY
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={hasMounted && !isUserLoading && !authUser}>
             <DialogContent
               className="sm:max-w-md"
@@ -3913,6 +4064,12 @@ const formatPolishedName = (name: string): string => {
                                                         fileData={previewFile || null}
                                                         sharedInfo={sharedInfo}
                                                         useMiddleInitial={useMiddleInitial}
+                                                        isPreviewLoading={previewLoadingKey === gradeLevel}
+                                                        onPreview={() => handlePreviewFirstLearner({
+                                                            gradeLevel,
+                                                            templateUrl: selectedUrl || null,
+                                                            fileData: previewFile || null,
+                                                        })}
                                                     />
                                                 </div>
                                             </div>
