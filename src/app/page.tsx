@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, Eye } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -469,26 +469,15 @@ const HistoryBadges = ({
 };
 
 
-type TemplatePreviewCardProps = {
+type TemplateStatusCardProps = {
   gradeLevel: string;
   templateName: string | null;
   selectedCount: number;
   sampleStudent: StudentRecord | null;
-  isPreviewLoading: boolean;
-  onPreview: () => void;
   [key: string]: unknown;
 };
 
-const TemplatePreviewCard = ({
-  gradeLevel,
-  templateName,
-  selectedCount,
-  sampleStudent,
-  isPreviewLoading,
-  onPreview,
-}: TemplatePreviewCardProps) => {
-  const canPreview = Boolean(templateName && sampleStudent && selectedCount > 0);
-
+const TemplateStatusCard = ({ gradeLevel, templateName, selectedCount, sampleStudent }: TemplateStatusCardProps) => {
   return (
     <div className="flex h-[240px] w-[180px] flex-col justify-between rounded-lg border bg-background p-3 shadow-sm">
       <div className="space-y-2">
@@ -498,7 +487,7 @@ const TemplatePreviewCard = ({
         </div>
         <div>
           <p className="line-clamp-2 text-sm font-semibold">{templateName || 'No template selected'}</p>
-          <p className="mt-1 text-xs text-muted-foreground">First selected learner only</p>
+          <p className="mt-1 text-xs text-muted-foreground">Use free tokens to test generated output.</p>
         </div>
       </div>
 
@@ -507,13 +496,34 @@ const TemplatePreviewCard = ({
         <p className="mt-1 text-muted-foreground">{selectedCount} selected</p>
       </div>
 
-      <Button type="button" size="sm" onClick={onPreview} disabled={!canPreview || isPreviewLoading} className="gap-2">
-        {isPreviewLoading ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
-        Preview
-      </Button>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        New accounts include free tokens, enough to try a small batch before using the whole app.
+      </p>
     </div>
   );
 };
+
+
+function limitFilesDataToSelectedCount(filesData: FileData[], maxSelected: number) {
+  let remaining = maxSelected;
+
+  return filesData.map(fileData => {
+    if (remaining <= 0) {
+      return { ...fileData, selectedRows: new Set<string>() };
+    }
+
+    const limitedRows = new Set<string>();
+    for (const student of fileData.studentData) {
+      if (remaining <= 0) break;
+      if (fileData.selectedRows.has(student.LRN)) {
+        limitedRows.add(student.LRN);
+        remaining -= 1;
+      }
+    }
+
+    return { ...fileData, selectedRows: limitedRows };
+  });
+}
 
 function getDriveFileMimeType(fileName: string) {
   const lowerFileName = fileName.toLowerCase();
@@ -691,7 +701,7 @@ function formatTokenHistoryDate(value: string | null) {
 const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
     const steps = [
         { id: 1, title: 'Upload' },
-        { id: 2, title: 'Preview & Select' },
+        { id: 2, title: 'Select Templates' },
         { id: 3, title: 'Generate' }
     ];
 
@@ -805,12 +815,7 @@ export default function Home() {
   const [shareEmail, setShareEmail] = useState('');
   const [shareTokenAmount, setShareTokenAmount] = useState(5);
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
-  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState('First Learner Preview');
-  const [previewRequestedFonts, setPreviewRequestedFonts] = useState<string[]>([]);
-  const [previewLoadingKey, setPreviewLoadingKey] = useState<string | null>(null);
   const tokenReloadVerificationAttemptedRef = useRef(false);
-  const previewPdfUrlRef = useRef<string | null>(null);
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
@@ -822,22 +827,6 @@ export default function Home() {
     setHasMounted(true);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (previewPdfUrlRef.current) {
-        URL.revokeObjectURL(previewPdfUrlRef.current);
-      }
-    };
-  }, []);
-
-  const closePreviewDialog = useCallback(() => {
-    if (previewPdfUrlRef.current) {
-      URL.revokeObjectURL(previewPdfUrlRef.current);
-      previewPdfUrlRef.current = null;
-    }
-    setPreviewPdfUrl(null);
-    setPreviewRequestedFonts([]);
-  }, []);
 
 
   const [useMiddleInitial, setUseMiddleInitial] = useState(true);
@@ -854,79 +843,6 @@ export default function Home() {
     return { Authorization: `Bearer ${token}` };
   }, [authUser]);
 
-  const handlePreviewFirstLearner = useCallback(async ({
-    gradeLevel,
-    templateUrl,
-    fileData,
-  }: {
-    gradeLevel: string;
-    templateUrl: string | null;
-    fileData: FileData | null;
-  }) => {
-    if (!templateUrl || !fileData) {
-      toast({
-        variant: 'destructive',
-        title: 'Preview Unavailable',
-        description: 'Select a template and a processed file before previewing.',
-      });
-      return;
-    }
-
-    const selectedStudents = fileData.studentData.filter(student => fileData.selectedRows.has(student.LRN));
-    if (selectedStudents.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Preview Unavailable',
-        description: 'Select at least one learner before previewing.',
-      });
-      return;
-    }
-
-    setPreviewLoadingKey(gradeLevel);
-    try {
-      const { blob } = await buildSf9DocxBlob({
-        templateUrl,
-        fileData,
-        sharedInfo,
-        croppedLogo,
-        useMiddleInitial,
-        previewOnly: true,
-      });
-
-      const docxName = 'SF9_' + gradeLevel + '_' + (fileData.fileInfo.section || 'Preview') + '_preview.docx';
-      const formData = new FormData();
-      formData.append('file', blob, docxName);
-
-      const headers = await getAuthHeaders();
-      const conversionResponse = await fetch('/api/convert-docx-to-pdf', {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
-
-      if (!conversionResponse.ok) {
-        const errorData = await conversionResponse.json().catch(() => null);
-        throw new Error(errorData?.error || 'Could not render the preview PDF.');
-      }
-
-      const requestedFontsHeader = conversionResponse.headers.get('x-docx-fonts') || '';
-      const requestedFonts = requestedFontsHeader.split(',').map(font => font.trim()).filter(Boolean);
-      const pdfBlob = await conversionResponse.blob();
-      const nextUrl = URL.createObjectURL(pdfBlob);
-      if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
-      previewPdfUrlRef.current = nextUrl;
-      setPreviewTitle('Grade ' + gradeLevel + ' - ' + selectedStudents[0].Name);
-      setPreviewPdfUrl(nextUrl);
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Preview Failed',
-        description: error.message || 'Could not generate the first learner preview.',
-      });
-    } finally {
-      setPreviewLoadingKey(null);
-    }
-  }, [croppedLogo, getAuthHeaders, sharedInfo, toast, useMiddleInitial]);
 
   const readApiError = async (response: Response, fallback: string) => {
     const contentType = response.headers.get('content-type') || '';
@@ -2079,7 +1995,6 @@ const formatPolishedName = (name: string): string => {
 
   const handlePaymentAndGenerate = async () => {
     const totalSelected = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
-    const requiredTokens = calculateTokenCost(totalSelected);
     const availableTokens = tokenWallet?.tokens || 0;
 
     if (totalSelected === 0) {
@@ -2102,21 +2017,34 @@ const formatPolishedName = (name: string): string => {
       return;
     }
 
-    if (availableTokens < requiredTokens) {
-      const allowableForms = calculateAllowableStudentForms(availableTokens);
+    const allowableForms = calculateAllowableStudentForms(availableTokens);
+    if (!isPromoApplied && allowableForms <= 0) {
       toast({
         variant: 'destructive',
-        title: 'Insufficient Tokens',
-        description: `You need ${requiredTokens} tokens for ${totalSelected} student form(s). You can generate up to ${allowableForms} student form(s), reduce your selection, or reload tokens.`,
+        title: 'No Tokens Available',
+        description: 'Reload tokens before generating. New users can use their free starting tokens to test the app first.',
       });
       setIsPurchaseConfirmationOpen(false);
       setIsTokenReloadOpen(true);
       return;
     }
+
+    const generationStudentCount = isPromoApplied ? totalSelected : Math.min(totalSelected, allowableForms);
+    const generationFilesData = generationStudentCount < totalSelected
+      ? limitFilesDataToSelectedCount(filesData, generationStudentCount)
+      : filesData;
+
+    if (!isPromoApplied && generationStudentCount < totalSelected) {
+      toast({
+        title: 'Generating Token-Covered Forms',
+        description: `You selected ${totalSelected} learner(s), but your ${availableTokens} token(s) can cover ${generationStudentCount}. Only the first ${generationStudentCount} selected learner form(s) will be generated.`,
+      });
+    }
+
     updatePreviousInfo();
 
     const generationState: AppState = {
-      filesData,
+      filesData: generationFilesData,
       sharedInfo,
       croppedLogo,
       selectedTemplateUrls,
@@ -2144,7 +2072,7 @@ const formatPolishedName = (name: string): string => {
         const reservationResponse = await fetch('/api/tokens/generation', {
             method: 'POST',
             headers: { ...headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'reserve', studentCount: totalSelected }),
+            body: JSON.stringify({ action: 'reserve', studentCount: generationStudentCount }),
         });
 
         const reservationData = await reservationResponse.json().catch(() => null);
@@ -2617,8 +2545,10 @@ const formatPolishedName = (name: string): string => {
   const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
   const availableTokens = tokenWallet?.tokens || 0;
-  const requiredTokens = calculateTokenCost(totalSelectedStudents);
   const allowableStudentForms = calculateAllowableStudentForms(availableTokens);
+  const generationStudentLimit = isPromoApplied ? totalSelectedStudents : Math.min(totalSelectedStudents, allowableStudentForms);
+  const requiredTokens = calculateTokenCost(generationStudentLimit);
+  const isSelectionTokenLimited = !isPromoApplied && totalSelectedStudents > generationStudentLimit;
   const reloadPreview = calculateTokenReload(reloadAmountPesos);
   
   const isActionDisabled = isProcessing || totalSelectedStudents === 0 || 
@@ -2700,35 +2630,6 @@ const formatPolishedName = (name: string): string => {
       <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
 
-        <Dialog open={Boolean(previewPdfUrl)} onOpenChange={(open) => { if (!open) closePreviewDialog(); }}>
-          <DialogContent className="max-w-5xl">
-            <DialogHeader>
-              <DialogTitle>{previewTitle}</DialogTitle>
-              <DialogDescription>
-                Exact preview generated from the selected template. Only the first selected learner is shown.
-                {previewRequestedFonts.length > 0 && (
-                  <span className="mt-1 block text-xs">
-                    Template fonts requested: {previewRequestedFonts.join(', ')}. If these are missing on the converter, the preview PDF may substitute fonts.
-                  </span>
-                )}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="relative h-[75vh] overflow-hidden rounded-lg border bg-muted">
-              {previewPdfUrl && (
-                <iframe
-                  src={previewPdfUrl}
-                  title={previewTitle}
-                  className="h-full w-full bg-background"
-                />
-              )}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="-rotate-45 select-none rounded border-4 border-destructive/25 bg-background/45 px-10 py-4 text-5xl font-black uppercase tracking-widest text-destructive/35 shadow-sm">
-                  PREVIEW ONLY
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
         <Dialog open={hasMounted && !isUserLoading && !authUser}>
             <DialogContent
               className="sm:max-w-md"
@@ -2953,7 +2854,8 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label="Total Selected Students" value={totalSelectedStudents} />
                 <SummaryItem label="Paper Size" value={paperSize} />
                 <SummaryItem label="Document Type" value="DOCX" />
-                <SummaryItem label="Required Tokens" value={`${requiredTokens} tokens (${TOKENS_PER_STUDENT_FORM} per student form)`} />
+                <SummaryItem label={isSelectionTokenLimited ? "Forms to Generate Now" : "Forms to Generate"} value={`${generationStudentLimit} of ${totalSelectedStudents} selected`} />
+                <SummaryItem label={isSelectionTokenLimited ? "Tokens Used Now" : "Required Tokens"} value={`${requiredTokens} tokens (${TOKENS_PER_STUDENT_FORM} per student form)`} />
                 <SummaryItem label="Available Tokens" value={`${availableTokens} tokens`} />
                 <SummaryItem label="School Name" value={sharedInfo.school} />
                 <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
@@ -3008,7 +2910,7 @@ const formatPolishedName = (name: string): string => {
                           </div>
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Selected Students:</span>
-                            <span className="font-semibold text-foreground">{totalSelectedStudents} student(s) x {TOKENS_PER_STUDENT_FORM} tokens</span>
+                            <span className="font-semibold text-foreground">{totalSelectedStudents} selected x {TOKENS_PER_STUDENT_FORM} tokens</span>
                           </div>
                           <div className="flex justify-between items-center text-muted-foreground">
                             <span>Available Tokens:</span>
@@ -3016,7 +2918,7 @@ const formatPolishedName = (name: string): string => {
                           </div>
 
                           <div className="flex justify-between items-center pt-2 border-t font-semibold text-sm text-foreground">
-                            <span>Required Tokens:</span>
+                            <span>{isSelectionTokenLimited ? 'Tokens Used Now:' : 'Required Tokens:'}</span>
                             <span className="text-primary text-base">{requiredTokens}</span>
                           </div>
                         </div>
@@ -3026,14 +2928,14 @@ const formatPolishedName = (name: string): string => {
 
                 {!isPromoApplied && (
                     <div className="space-y-3">
-                        {availableTokens < requiredTokens && (
+                        {isSelectionTokenLimited && generationStudentLimit > 0 && (
                             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200 space-y-1 text-xs">
                                 <div className="flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
                                     <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                                    <span>Insufficient Tokens</span>
+                                    <span>Limited Test Generation</span>
                                 </div>
                                 <p className="text-[11px] leading-relaxed opacity-90">
-                                    You can currently generate up to <strong>{allowableStudentForms}</strong> student form(s). Reload tokens or reduce your selected students.
+                                    Your available tokens can generate <strong>{generationStudentLimit}</strong> of <strong>{totalSelectedStudents}</strong> selected learner form(s). Only the first token-covered selected learners will be included. Use this to test first, or reload tokens to generate the full selection.
                                 </p>
                             </div>
                         )}
@@ -3072,13 +2974,13 @@ const formatPolishedName = (name: string): string => {
                 )}
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    {availableTokens < requiredTokens && !isPromoApplied ? (
+                    {!isPromoApplied && generationStudentLimit === 0 ? (
                       <Button onClick={() => { setIsPurchaseConfirmationOpen(false); setIsTokenReloadOpen(true); }}>
                         Reload Tokens
                       </Button>
                     ) : (
                       <AlertDialogAction onClick={handlePaymentAndGenerate}>
-                        {isPromoApplied ? 'Generate for Free' : 'Generate with Tokens'}
+                        {isPromoApplied ? 'Generate for Free' : isSelectionTokenLimited ? 'Generate First ' + generationStudentLimit : 'Generate with Tokens'}
                       </AlertDialogAction>
                     )}
                 </AlertDialogFooter>
@@ -3521,7 +3423,7 @@ const formatPolishedName = (name: string): string => {
                         <Table className="size-6" />
                       </div>
                       <div>
-                        <CardTitle>Preview & Select Data</CardTitle>
+                        <CardTitle>Select Templates Data</CardTitle>
                         <CardDescription>Review the data and select records for each file.</CardDescription>
                       </div>
                     </div>
@@ -4054,7 +3956,7 @@ const formatPolishedName = (name: string): string => {
                                                 </div>
                                                 
                                                 <div className="flex-shrink-0 flex items-center justify-center bg-muted/20 dark:bg-muted/5 p-3 rounded-lg border border-dashed w-full md:w-auto">
-                                                    <TemplatePreviewCard 
+                                                    <TemplateStatusCard 
                                                         gradeLevel={gradeLevel} 
                                                         templateName={selectedTemplate?.name || null}
                                                         schoolLogo={croppedLogo}
@@ -4072,12 +3974,6 @@ const formatPolishedName = (name: string): string => {
                                                         fileData={previewFile || null}
                                                         sharedInfo={sharedInfo}
                                                         useMiddleInitial={useMiddleInitial}
-                                                        isPreviewLoading={previewLoadingKey === gradeLevel}
-                                                        onPreview={() => handlePreviewFirstLearner({
-                                                            gradeLevel,
-                                                            templateUrl: selectedUrl || null,
-                                                            fileData: previewFile || null,
-                                                        })}
                                                     />
                                                 </div>
                                             </div>
