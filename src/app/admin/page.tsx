@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { withAuth } from '@/components/auth/with-auth';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,7 @@ function AdminPage() {
   const [bulkCsv, setBulkCsv] = useState('');
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/token-history');
@@ -31,7 +27,11 @@ function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [toast]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   async function handleAddTokens(e?: any) {
     if (e) e.preventDefault();

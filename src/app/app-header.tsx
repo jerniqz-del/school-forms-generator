@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from "react";
+import Link from "next/link";
 import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -131,9 +132,9 @@ export function AppHeader({
             <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-sm">
                 <div className="container flex min-h-16 flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex gap-6 md:gap-10">
-                        <a href="/" className="flex items-center space-x-2">
+                        <Link href="/" className="flex items-center space-x-2">
                              <span className="inline-block font-bold">School Forms Generator</span>
-                        </a>
+                        </Link>
                     </div>
 
                     <div className="flex flex-1 items-center justify-end">
@@ -199,7 +200,7 @@ export function AppHeader({
                                         <Trash2 className="size-4" />
                                         Delete account
                                     </DropdownMenuItem>
-                                    {/Bearer  Admin link removed while admin features are disabled Bearer /}
+                                    {/* Admin link removed while admin features are disabled */}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={signOut}>
                                         <LogOut className="size-4" />

@@ -1,4 +1,4 @@
-﻿
+
 
 'use client';
 
@@ -469,7 +469,13 @@ const HistoryBadges = ({
 };
 
 
-const TemplatePreviewCard = ({ gradeLevel, templateName }) => {
+type TemplatePreviewCardProps = {
+  gradeLevel: string;
+  templateName: string | null;
+  [key: string]: unknown;
+};
+
+const TemplatePreviewCard = ({ gradeLevel, templateName }: TemplatePreviewCardProps) => {
   return (
     <div className="w-[180px] h-[240px] border rounded-lg flex items-center justify-center">Preview</div>
   );
@@ -2402,8 +2408,6 @@ const formatPolishedName = (name: string): string => {
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
     
-    canvas.width = Math.round(completedCrop.width * pixelRatio);
-    canvas.height = Math.round(completedCrop.height * pixelRatio);
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
@@ -2626,8 +2630,8 @@ const formatPolishedName = (name: string): string => {
                 </AlertDialogHeader>
                 <ScrollArea className="max-h-[60vh] pr-6">
                     <div className="space-y-4 text-sm text-muted-foreground">
-                        <p>Please read these terms carefully before using School Forms Generator (the "Service").</p>
-                        <p>By clicking "Agree" or by using this Service, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined below.</p>
+                        <p>Please read these terms carefully before using School Forms Generator (the &quot;Service&quot;).</p>
+                        <p>By clicking &quot;Agree&quot; or by using this Service, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined below.</p>
                         
                         <h3 className="font-semibold text-foreground">1. No Official Affiliation</h3>
                         <p>This is an unofficial, third-party tool. It is NOT affiliated with, endorsed by, or created by the Department of Education (DepEd). This Service is provided as-is for convenience and supplemental use only.</p>
@@ -2646,7 +2650,7 @@ const formatPolishedName = (name: string): string => {
                         <ul className="list-disc pl-5 space-y-2">
                             <li><span className="font-semibold">For Convenience Only:</span> The calculations and generated documents are for review and convenience purposes only.</li>
                             <li><span className="font-semibold">Verification is Your Responsibility:</span> You, the user, are solely responsible for manually verifying the accuracy of all generated data (names, grades, calculations, etc.) against official school records and the Learner Information System (LIS) before any official use.</li>
-                            <li><span className="font-semibold">No Warranty:</span> This Service is provided "as is" and "as available" without any warranties, express or implied. The developer does not guarantee that the Service will be error-free or that the generated documents will be 100% accurate or compliant with the latest DepEd orders. DepEd policies and form requirements can change at any time.</li>
+                            <li><span className="font-semibold">No Warranty:</span> This Service is provided &quot;as is&quot; and &quot;as available&quot; without any warranties, express or implied. The developer does not guarantee that the Service will be error-free or that the generated documents will be 100% accurate or compliant with the latest DepEd orders. DepEd policies and form requirements can change at any time.</li>
                             <li><span className="font-semibold">Limitation of Liability:</span> The developer shall not be held liable for any damages (direct, indirect, or consequential) arising from the use or inability to use this Service. This includes, but is not to be limited to, damages from inaccurate calculations, file generation errors, or any reliance on this tool for official submissions.</li>
                         </ul>
 
@@ -3438,7 +3442,7 @@ const formatPolishedName = (name: string): string => {
                                           ) : (
                                             <TableRow>
                                               <TableCell colSpan={6} className="h-24 text-center">
-                                                No results found for "{fileData.searchTerm}".
+                                                No results found for &quot;{fileData.searchTerm}&quot;.
                                               </TableCell>
                                             </TableRow>
                                           )}
@@ -3483,7 +3487,7 @@ const formatPolishedName = (name: string): string => {
                     <CardContent className="space-y-8 pt-6">
                        <div>
                           <h3 className="text-lg font-medium mb-3">Per-section Information</h3>
-                          <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser's name if needed.</p>
+                          <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser&apos;s name if needed.</p>
                           <div className="border rounded-lg overflow-hidden">
                             <ShadTable>
                                 <TableHeader>
