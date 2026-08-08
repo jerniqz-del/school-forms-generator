@@ -56,6 +56,25 @@ function getCachedGoogleDriveAccessToken() {
   return null;
 }
 
+function getGoogleSignInErrorMessage(error: unknown) {
+  const authError = error as { code?: string; message?: string };
+
+  switch (authError.code) {
+    case 'auth/unauthorized-domain':
+      return 'This Vercel domain is not authorized in Firebase Authentication. Add it under Firebase Console > Authentication > Settings > Authorized domains.';
+    case 'auth/popup-closed-by-user':
+      return 'The Google sign-in popup was closed before sign-in completed.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the Google sign-in popup. Allow popups for this site and try again.';
+    case 'auth/cancelled-popup-request':
+      return 'Another Google sign-in popup was already open. Close extra popups and try again.';
+    case 'auth/network-request-failed':
+      return 'Network connection failed while contacting Google. Check your connection and try again.';
+    default:
+      return authError.message || 'Could not sign in with Google. Please try again.';
+  }
+}
+
 function cacheGoogleDriveAccessToken(accessToken?: string) {
   if (typeof window === 'undefined' || !accessToken) return;
 
@@ -169,7 +188,7 @@ export const useUser = () => {
       toast({
         variant: "destructive",
         title: "Sign-in Failed",
-        description: "Could not sign in with Google. Please try again.",
+        description: getGoogleSignInErrorMessage(error),
       });
     }
   };
