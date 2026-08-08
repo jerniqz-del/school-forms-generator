@@ -1,7 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import PizZip from 'pizzip';
 import { requireUserIdFromRequest } from '@/lib/firebase-admin';
 
 export const maxDuration = 300;
+function extractDocxFonts(buffer: ArrayBuffer) {
+  const fonts = new Set<string>();
+
+  try {
+    const zip = new PizZip(buffer);
+    const xmlFiles = ['word/fontTable.xml', 'word/styles.xml', 'word/document.xml'];
+
+    for (const fileName of xmlFiles) {
+      const xml = zip.file(fileName)?.asText();
+      if (!xml) continue;
+
+      const fontNameMatches = xml.matchAll(/w:name="([^"]+)"/g);
+      for (const match of fontNameMatches) fonts.add(match[1]);
+
+      const runFontMatches = xml.matchAll(/w:(?:ascii|hAnsi|eastAsia|cs)="([^"]+)"/g);
+      for (const match of runFontMatches) fonts.add(match[1]);
+    }
+  } catch (error) {
+    console.warn('Unable to inspect DOCX fonts:', error);
+  }
+
+  return Array.from(fonts).sort();
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,8 +52,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only DOCX files can be converted.' }, { status: 400 });
     }
 
+    const fileBuffer = await file.arrayBuffer();
+    const requestedFonts = extractDocxFonts(fileBuffer);
+    const upstreamFile = new File([fileBuffer], file.name, { type: file.type });
+
     const upstreamForm = new FormData();
-    upstreamForm.append('file', file, file.name);
+    upstreamForm.append('file', upstreamFile, file.name);
 
     const response = await fetch(`${converterUrl.replace(/\/$/, '')}/convert-to-pdf`, {
       method: 'POST',
@@ -67,6 +95,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${outputName}"`,
+        'X-Docx-Fonts': requestedFonts.join(', '),
       },
     });
   } catch (error: any) {

@@ -807,6 +807,7 @@ export default function Home() {
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('First Learner Preview');
+  const [previewRequestedFonts, setPreviewRequestedFonts] = useState<string[]>([]);
   const [previewLoadingKey, setPreviewLoadingKey] = useState<string | null>(null);
   const tokenReloadVerificationAttemptedRef = useRef(false);
   const previewPdfUrlRef = useRef<string | null>(null);
@@ -835,6 +836,7 @@ export default function Home() {
       previewPdfUrlRef.current = null;
     }
     setPreviewPdfUrl(null);
+    setPreviewRequestedFonts([]);
   }, []);
 
 
@@ -907,6 +909,8 @@ export default function Home() {
         throw new Error(errorData?.error || 'Could not render the preview PDF.');
       }
 
+      const requestedFontsHeader = conversionResponse.headers.get('x-docx-fonts') || '';
+      const requestedFonts = requestedFontsHeader.split(',').map(font => font.trim()).filter(Boolean);
       const pdfBlob = await conversionResponse.blob();
       const nextUrl = URL.createObjectURL(pdfBlob);
       if (previewPdfUrlRef.current) URL.revokeObjectURL(previewPdfUrlRef.current);
@@ -1318,7 +1322,6 @@ const handleGenerateSF9 = useCallback(async (
                     const errorData = await conversionResponse.json().catch(() => null);
                     throw new Error(errorData?.error || `Failed to convert ${fileData.fileName} to PDF.`);
                 }
-
                 const pdfBlob = await conversionResponse.blob();
                 generatedFiles.push({
                     name: docxName.replace(/\.docx$/i, '.pdf'),
@@ -2703,6 +2706,11 @@ const formatPolishedName = (name: string): string => {
               <DialogTitle>{previewTitle}</DialogTitle>
               <DialogDescription>
                 Exact preview generated from the selected template. Only the first selected learner is shown.
+                {previewRequestedFonts.length > 0 && (
+                  <span className="mt-1 block text-xs">
+                    Template fonts requested: {previewRequestedFonts.join(', ')}. If these are missing on the converter, the preview PDF may substitute fonts.
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <div className="relative h-[75vh] overflow-hidden rounded-lg border bg-muted">
