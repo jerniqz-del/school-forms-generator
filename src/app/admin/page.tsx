@@ -15,7 +15,7 @@ function AdminPage() {
   const [tokens, setTokens] = useState<number>(10);
   const [bulkCsv, setBulkCsv] = useState('');
   const { toast } = useToast();
-  const { user } = useUser();
+  const { user, signOut } = useUser();
 
   const getAuthHeaders = useCallback(async () => {
     if (!user) throw new Error('Sign in is required.');
@@ -93,8 +93,9 @@ function AdminPage() {
   return (
     <div className="container py-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle>Admin Dashboard</CardTitle>
+          <Button variant="outline" onClick={signOut}>Log out</Button>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAddTokens} className="flex gap-2 mb-4">
