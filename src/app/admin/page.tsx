@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { withAuth } from '@/components/auth/with-auth';
 import { useUser } from '@/firebase/auth/use-user';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ function AdminPage() {
   const [tokens, setTokens] = useState<number>(10);
   const [bulkCsv, setBulkCsv] = useState('');
   const { toast } = useToast();
-  const { user, signOut } = useUser();
+  const { user } = useUser();
 
   const getAuthHeaders = useCallback(async () => {
     if (!user) throw new Error('Sign in is required.');
@@ -95,7 +96,7 @@ function AdminPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle>Admin Dashboard</CardTitle>
-          <Button variant="outline" onClick={signOut}>Log out</Button>
+          <Button variant="outline" asChild><Link href="/">Close dashboard</Link></Button>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAddTokens} className="flex gap-2 mb-4">
