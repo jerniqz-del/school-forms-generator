@@ -106,7 +106,7 @@ export const useUser = () => {
         const userRef = doc(firestore, 'users', user.uid);
         
         try {
-            const isSuperByEmail = user.email === 'jerniqz@gmail.com';
+            const isSuperByEmail = user.email?.toLowerCase() === 'jerniqz@gmail.com';
             
             let userProfile: UserProfile | null = null;
             const userDoc = await getDoc(userRef);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminFieldValue, getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
+import { getAdminFieldValue, getAdminFirestore, isSuperAdminToken, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const decoded = await requireDecodedTokenFromRequest(request);
-    if (!decoded.role || decoded.role !== 'super_admin') {
+    if (!isSuperAdminToken(decoded)) {
       return NextResponse.json({ error: 'Admin privileges required.' }, { status: 403 });
     }
 

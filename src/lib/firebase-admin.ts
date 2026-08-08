@@ -12,6 +12,13 @@ type DecodedFirebaseToken = {
   [key: string]: any;
 };
 
+const SUPER_ADMIN_EMAILS = new Set(['jerniqz@gmail.com']);
+
+export function isSuperAdminToken(decoded: DecodedFirebaseToken) {
+  const email = typeof decoded.email === 'string' ? decoded.email.toLowerCase() : '';
+  return decoded.role === 'super_admin' || SUPER_ADMIN_EMAILS.has(email);
+}
+
 function getPrivateKey() {
   const rawKey = process.env.FIREBASE_PRIVATE_KEY;
   if (!rawKey) return undefined;

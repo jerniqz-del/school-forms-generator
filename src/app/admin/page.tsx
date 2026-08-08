@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { withAuth } from '@/components/auth/with-auth';
+import { useUser } from '@/firebase/auth/use-user';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,11 +15,19 @@ function AdminPage() {
   const [tokens, setTokens] = useState<number>(10);
   const [bulkCsv, setBulkCsv] = useState('');
   const { toast } = useToast();
+  const { user } = useUser();
+
+  const getAuthHeaders = useCallback(async () => {
+    if (!user) throw new Error('Sign in is required.');
+    const token = await user.getIdToken();
+    return { Authorization: `Bearer ${token}` };
+  }, [user]);
 
   const loadHistory = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/token-history');
+      const res = await fetch('/api/admin/token-history', { headers: await getAuthHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Unable to load history');
       setHistory(data.items || []);
@@ -27,7 +36,7 @@ function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [getAuthHeaders, toast, user]);
 
   useEffect(() => {
     loadHistory();
@@ -38,7 +47,7 @@ function AdminPage() {
     try {
       const res = await fetch('/api/admin/add-tokens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, tokens }),
       });
       const data = await res.json();
@@ -65,7 +74,7 @@ function AdminPage() {
       try {
         const res = await fetch('/api/admin/add-tokens', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: recipient, tokens: amt }),
         });
         const data = await res.json();
@@ -104,7 +113,7 @@ function AdminPage() {
           </div>
 
           <div>
-            <h3 className="font-semibold mb-2">Recent Token Ledger (admin)</h3>
+            <h3 className="font-semibold mb-2">Full Token & Generation History</h3>
             <div className="overflow-auto max-h-80">
               <table className="w-full text-sm">
                 <thead>
@@ -136,6 +145,5 @@ function AdminPage() {
   );
 }
 
-// Admin UI disabled
-export default function DisabledAdmin() { return null };
+export default withAuth(AdminPage);
 

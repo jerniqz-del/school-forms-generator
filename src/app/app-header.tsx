@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
-import { Coins, History, LogIn, LogOut, RotateCcw, Share2, Trash2, UserCircle, Package as PackageIcon } from "lucide-react";
+import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Package as PackageIcon } from "lucide-react";
 
 type AppHeaderProps = {
     availableTokens?: number | null;
@@ -200,7 +200,14 @@ export function AppHeader({
                                         <Trash2 className="size-4" />
                                         Delete account
                                     </DropdownMenuItem>
-                                    {/* Admin link removed while admin features are disabled */}
+                                    {isAdmin && (
+                                        <DropdownMenuItem asChild>
+                                            <Link href="/admin" className="gap-2">
+                                                <Settings className="size-4" />
+                                                Admin dashboard
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={signOut}>
                                         <LogOut className="size-4" />
