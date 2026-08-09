@@ -2563,6 +2563,10 @@ const formatPolishedName = (name: string): string => {
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
   const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected;
+  const currentStepLabel = step === 1 ? 'Upload SF1 files' : step === 2 ? 'Select learners' : 'Finalize and generate';
+  const hasGeneratorDraft = pendingFiles.length > 0 || filesData.length > 0 || totalSelectedStudents > 0;
+  const latestTokenHistory = tokenHistory.slice(0, 3);
+  const latestDriveFiles = driveBackupFiles.slice(0, 3);
 
   const handleGenerateAnother = () => {
     resetState();
@@ -3361,43 +3365,174 @@ const formatPolishedName = (name: string): string => {
             </div>
           </aside>
 
-          <main className="min-w-0 space-y-8">
-            {activeWorkspaceSection === 'dashboard' && (
-              <section className="overflow-hidden rounded-3xl border bg-card shadow-xl shadow-primary/5">
-                <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="p-6 sm:p-8 lg:p-10">
-                    <Badge className="mb-5 bg-accent text-accent-foreground hover:bg-accent">TeachTiangge Dashboard</Badge>
-                    <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-normal text-foreground sm:text-5xl">
-                      TeachTiangge
-                    </h1>
-                    <p className="mt-3 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-                      Your go to digital store for teaching related materials.
-                    </p>
-                    <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                      <Button size="lg" className="gap-2" onClick={() => setActiveWorkspaceSection('generator')}>
-                        <FileText className="size-5" />
-                        Open School Forms Generator
+          <main className="min-w-0 space-y-8">            {activeWorkspaceSection === 'dashboard' && (
+              <section className="space-y-6">
+                <div className="rounded-3xl border bg-card p-6 shadow-xl shadow-primary/5 sm:p-8">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <Badge className="mb-4 bg-accent text-accent-foreground hover:bg-accent">TeachTiangge Dashboard</Badge>
+                      <h1 className="text-3xl font-bold tracking-normal text-foreground sm:text-4xl">Teacher workspace</h1>
+                      <p className="mt-2 max-w-2xl text-muted-foreground">
+                        Your go to digital store for teaching related materials.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button className="gap-2" onClick={() => setActiveWorkspaceSection('generator')}>
+                        <FileText className="size-4" />
+                        Continue generator
                       </Button>
-                      <Button size="lg" variant="outline" className="gap-2" onClick={() => setActiveWorkspaceSection('marketplace')}>
-                        <ShoppingBag className="size-5" />
-                        Browse Marketplace
+                      <Button variant="outline" className="gap-2" onClick={() => setActiveWorkspaceSection('marketplace')}>
+                        <ShoppingBag className="size-4" />
+                        Marketplace
                       </Button>
                     </div>
                   </div>
-                  <div className="grid gap-3 border-t bg-muted/30 p-6 sm:grid-cols-3 lg:grid-cols-1 lg:border-l lg:border-t-0">
-                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
-                      <p className="text-xs text-muted-foreground">Available Tokens</p>
-                      <p className="mt-1 text-3xl font-bold">{availableTokens}</p>
-                    </div>
-                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
-                      <p className="text-xs text-muted-foreground">Selected Learners</p>
-                      <p className="mt-1 text-3xl font-bold">{totalSelectedStudents}</p>
-                    </div>
-                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
-                      <p className="text-xs text-muted-foreground">Processed Files</p>
-                      <p className="mt-1 text-3xl font-bold">{filesData.length}</p>
-                    </div>
-                  </div>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                  <Card className="border-primary/15 shadow-lg shadow-primary/5">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <FileText className="size-5 text-primary" />
+                        Continue Last Work
+                      </CardTitle>
+                      <CardDescription>{hasGeneratorDraft ? currentStepLabel : 'Start by uploading one or more SF1 files.'}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl border bg-muted/30 p-4">
+                          <p className="text-xs text-muted-foreground">Files</p>
+                          <p className="mt-1 text-2xl font-bold">{filesData.length || pendingFiles.length}</p>
+                        </div>
+                        <div className="rounded-2xl border bg-muted/30 p-4">
+                          <p className="text-xs text-muted-foreground">Selected learners</p>
+                          <p className="mt-1 text-2xl font-bold">{totalSelectedStudents}</p>
+                        </div>
+                        <div className="rounded-2xl border bg-muted/30 p-4">
+                          <p className="text-xs text-muted-foreground">Can generate now</p>
+                          <p className="mt-1 text-2xl font-bold">{generationStudentLimit}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button className="flex-1" onClick={() => setActiveWorkspaceSection('generator')}>
+                          {hasGeneratorDraft ? 'Resume Generator' : 'Start Generator'}
+                        </Button>
+                        {hasGeneratorDraft && (
+                          <Button variant="outline" onClick={() => { resetState(); clearStateFromLocalStorage(); }}>Clear Draft</Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="shadow-lg shadow-primary/5">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Coins className="size-5 text-primary" />
+                        Token Wallet
+                      </CardTitle>
+                      <CardDescription>Tokens remain available across TeachTiangge.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-end justify-between rounded-2xl border bg-primary/5 p-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Available tokens</p>
+                          <p className="text-4xl font-bold text-foreground">{availableTokens}</p>
+                        </div>
+                        <Badge variant="outline">{allowableStudentForms} form(s)</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
+                        <Button variant="outline" onClick={handleOpenTokenHistory}>Activity</Button>
+                        <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>Share</Button>
+                        <Button variant="outline" onClick={handleOpenReferralRewards}>Rewards</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-3">
+                  <Card className="xl:col-span-1">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Files className="size-5 text-primary" />
+                        Recent Generated Files
+                      </CardTitle>
+                      <CardDescription>Google Drive backup files.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {latestDriveFiles.length ? latestDriveFiles.map(file => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 rounded-xl border bg-background p-3 text-left text-sm transition-colors hover:bg-muted/60"
+                          onClick={() => file.webViewLink && window.open(file.webViewLink, '_blank', 'noopener,noreferrer')}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold">{file.name}</span>
+                            <span className="text-xs text-muted-foreground">{file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : 'Saved file'}</span>
+                          </span>
+                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      )) : (
+                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          Open Drive files once to load your recent generated documents here.
+                        </div>
+                      )}
+                      <Button variant="outline" className="w-full" onClick={handleOpenDriveFiles} disabled={isDriveFilesLoading}>
+                        {isDriveFilesLoading ? <Loader2 className="size-4 animate-spin" /> : <Files className="size-4" />}
+                        Load Drive Files
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="xl:col-span-1">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <History className="size-5 text-primary" />
+                        Token Activity
+                      </CardTitle>
+                      <CardDescription>Latest wallet events.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {latestTokenHistory.length ? latestTokenHistory.map(item => (
+                        <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl border bg-background p-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-semibold">{getTokenHistoryTitle(item.type)}</p>
+                            <p className="line-clamp-1 text-xs text-muted-foreground">{getTokenHistoryDetail(item)}</p>
+                          </div>
+                          <Badge variant={item.tokens >= 0 ? 'default' : 'secondary'}>{item.tokens >= 0 ? '+' : ''}{item.tokens}</Badge>
+                        </div>
+                      )) : (
+                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          Load token activity to see reloads, rewards, shares, and generations.
+                        </div>
+                      )}
+                      <Button variant="outline" className="w-full" onClick={handleOpenTokenHistory} disabled={isTokenHistoryLoading}>
+                        {isTokenHistoryLoading ? <Loader2 className="size-4 animate-spin" /> : <History className="size-4" />}
+                        Load Activity
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="xl:col-span-1">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <ShoppingBag className="size-5 text-primary" />
+                        Marketplace Picks
+                      </CardTitle>
+                      <CardDescription>Suggested sections for teaching materials.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {['SF9 templates', 'Class record tools', 'Certificates and printables'].map(item => (
+                        <div key={item} className="rounded-xl border bg-background p-3 text-sm font-semibold">
+                          {item}
+                        </div>
+                      ))}
+                      <Button variant="outline" className="w-full" onClick={() => setActiveWorkspaceSection('marketplace')}>
+                        Open Marketplace
+                      </Button>
+                    </CardContent>
+                  </Card>
                 </div>
               </section>
             )}
