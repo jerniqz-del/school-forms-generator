@@ -2628,7 +2628,7 @@ const formatPolishedName = (name: string): string => {
           onResetAccount={handleAccountReset}
         />
       )}
-      <div className="container mx-auto px-4 pt-8 pb-24 space-y-8">
+      <div className="container mx-auto px-4 pt-6 pb-24 space-y-6">
         {isProcessing && <LoadingOverlay message={loadingMessage} />}
 
         <Dialog open={hasMounted && !isUserLoading && !authUser}>
@@ -2659,47 +2659,6 @@ const formatPolishedName = (name: string): string => {
               </DialogFooter>
             </DialogContent>
         </Dialog>
-        
-        {authUser && (
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Coins className="size-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Available Tokens</p>
-                  <p className="text-xl font-semibold">{availableTokens}</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={handleOpenDriveFiles}>
-                  <Files className="mr-2 size-4" />
-                  Drive Files
-                </Button>
-                {tokenWallet?.referralCode && (
-                  <>
-                    <Button variant="outline" onClick={handleOpenReferralRewards}>
-                      <Gift className="mr-2 size-4" />
-                      Referral Rewards
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
-                        navigator.clipboard?.writeText(url);
-                        toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another teacher to earn reward tokens after their first reload.' });
-                      }}
-                    >
-                      <Gift className="mr-2 size-4" />
-                      Copy Referral Link
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         <AlertDialog open={isDisclaimerOpen} onOpenChange={setIsDisclaimerOpen}>
             <AlertDialogContent className="max-w-3xl">
@@ -3323,8 +3282,8 @@ const formatPolishedName = (name: string): string => {
         </Dialog>
 
                 <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)]">
-            <div className="flex h-full flex-col gap-4 rounded-2xl border bg-card/95 p-4 shadow-lg shadow-primary/5">
+          <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+            <div className="flex h-full flex-col gap-4 overflow-y-auto rounded-2xl border bg-card/95 p-4 shadow-lg shadow-primary/5">
               <div className="rounded-2xl bg-primary p-4 text-primary-foreground shadow-md shadow-primary/25">
                 <div className="flex items-center gap-3">
                   <span className="flex size-11 items-center justify-center rounded-xl bg-white/15">
@@ -3373,7 +3332,30 @@ const formatPolishedName = (name: string): string => {
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Button size="sm" onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
                     <Button size="sm" variant="outline" onClick={handleOpenTokenHistory}>History</Button>
+                    <Button size="sm" variant="outline" onClick={handleOpenDriveFiles}>Drive</Button>
+                    <Button size="sm" variant="outline" onClick={() => setIsTokenShareOpen(true)}>Share</Button>
                   </div>
+                  {tokenWallet?.referralCode && (
+                    <div className="mt-2 grid grid-cols-1 gap-2">
+                      <Button size="sm" variant="ghost" className="justify-start px-2 text-xs" onClick={handleOpenReferralRewards}>
+                        <Gift className="size-3.5" />
+                        Referral rewards
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="justify-start px-2 text-xs"
+                        onClick={() => {
+                          const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
+                          navigator.clipboard?.writeText(url);
+                          toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another teacher to earn reward tokens after their first reload.' });
+                        }}
+                      >
+                        <Share2 className="size-3.5" />
+                        Copy referral link
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3438,7 +3420,7 @@ const formatPolishedName = (name: string): string => {
             )}
 
             <div className={cn('max-w-5xl mx-auto w-full space-y-8', activeWorkspaceSection === 'generator' ? 'block' : 'hidden')}>
-            <div className="p-4 md:p-6 bg-card border rounded-xl">
+            <div className="sticky top-20 z-30 rounded-2xl border bg-card/95 p-3 shadow-lg shadow-primary/5 backdrop-blur md:p-4">
                  <Stepper currentStep={step} setStep={setStep} />
             </div>
            
@@ -3574,7 +3556,7 @@ const formatPolishedName = (name: string): string => {
                                     </div>
                                 </AccordionTrigger>
                                 <AccordionContent className="border rounded-lg rounded-t-none border-t-0 p-4">
-                                     <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                                     <div className="sticky top-36 z-20 mb-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
                                         <div className="relative max-w-sm w-full">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                                             <Input
@@ -3648,7 +3630,7 @@ const formatPolishedName = (name: string): string => {
                         )})}
                     </Accordion>
 
-                    <div className="flex items-center justify-between mt-6">
+                    <div className="sticky bottom-4 z-20 mt-6 flex items-center justify-between rounded-2xl border bg-card/95 p-3 shadow-lg shadow-primary/10 backdrop-blur">
                         <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
                         <Button onClick={() => setStep(3)} disabled={totalSelectedStudents === 0}>
                             Continue ({totalSelectedStudents}) <ChevronRight className="ml-2 size-4" />
@@ -4105,7 +4087,7 @@ const formatPolishedName = (name: string): string => {
                                 <span>Note: Back part of the School Form 9 is included on the last page of each generated document copy.</span>
                             </p>
 
-                            <div className="mt-8 border-t border-primary/10 pt-6 bg-gradient-to-r from-muted/30 via-background to-muted/30 p-6 rounded-2xl border shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="sticky bottom-4 z-20 mt-8 flex flex-col items-center justify-between gap-4 rounded-2xl border border-primary/10 bg-card/95 p-4 shadow-xl shadow-primary/10 backdrop-blur md:flex-row">
                                 <div className="flex items-center gap-3">
                                     <Button variant="outline" size="lg" onClick={() => setStep(2)} className="h-12 px-5 font-medium border-muted-foreground/20 hover:bg-muted">
                                         Back
