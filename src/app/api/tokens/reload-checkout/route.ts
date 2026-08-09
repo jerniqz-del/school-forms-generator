@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
               {
                 amount: reload.amountInCentavos,
                 currency: 'PHP',
-                name: `School Forms Generator Token Reload`,
+                name: `TeachTiangge Token Reload`,
                 quantity: 1,
                 description: `${reload.totalTokens} token(s)${reload.bonusTokens > 0 ? ` including ${reload.bonusTokens} bonus tokens` : ''}.`,
               },
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
             success_url: `${origin}/?token_payment_status=success`,
             cancel_url: `${origin}/?token_payment_status=cancelled`,
             reference_number: `SFG-TOKENS-${Date.now()}`,
-            description: `Token reload for School Forms Generator.`,
+            description: `Token reload for TeachTiangge.`,
           },
         },
       }),

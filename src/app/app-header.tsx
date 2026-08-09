@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
-import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Package as PackageIcon } from "lucide-react";
+import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Store } from "lucide-react";
 
 type AppHeaderProps = {
     availableTokens?: number | null;
@@ -112,7 +112,7 @@ export function AppHeader({
             toast({
                 variant: 'success',
                 title: 'Account Deleted',
-                description: 'Your School Forms Generator account has been deleted.',
+                description: 'Your TeachTiangge account has been deleted.',
             });
         } catch (error: any) {
             toast({
@@ -132,8 +132,14 @@ export function AppHeader({
             <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-sm">
                 <div className="container flex min-h-16 flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex gap-6 md:gap-10">
-                        <Link href="/" className="flex items-center space-x-2">
-                             <span className="inline-block font-bold">School Forms Generator</span>
+                        <Link href="/" className="flex items-center gap-3">
+                            <span className="flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
+                                <Store className="size-5" />
+                            </span>
+                            <span className="flex flex-col leading-tight">
+                                <span className="text-lg font-bold tracking-normal">TeachTiangge</span>
+                                <span className="hidden text-xs text-muted-foreground sm:inline">Your go to digital store for teaching related materials.</span>
+                            </span>
                         </Link>
                     </div>
 
@@ -255,7 +261,7 @@ export function AppHeader({
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete your account?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This permanently removes your School Forms Generator account, token wallet, token history, referrals, sharing records, and sign-in account. This cannot be undone.
+                            This permanently removes your TeachTiangge account, token wallet, token history, referrals, sharing records, and sign-in account. This cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

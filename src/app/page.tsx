@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2 } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, Store } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -763,6 +763,7 @@ const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step
 
 export default function Home() {
   const [step, setStep] = useState(1);
+  const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<'dashboard' | 'generator' | 'marketplace'>('dashboard');
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Processing file, please wait...');
   
@@ -2643,7 +2644,7 @@ const formatPolishedName = (name: string): string => {
                 </div>
                 <DialogTitle className="text-center">Sign In Required</DialogTitle>
                 <DialogDescription className="text-center">
-                  Sign in with Google before using School Forms Generator. Your account keeps tokens connected to you and enables Google Drive backup.
+                  Sign in with Google before using TeachTiangge. Your account keeps tokens connected to you and enables Google Drive backup.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -2707,7 +2708,7 @@ const formatPolishedName = (name: string): string => {
                 </AlertDialogHeader>
                 <ScrollArea className="max-h-[60vh] pr-6">
                     <div className="space-y-4 text-sm text-muted-foreground">
-                        <p>Please read these terms carefully before using School Forms Generator (the &quot;Service&quot;).</p>
+                        <p>Please read these terms carefully before using TeachTiangge (the &quot;Service&quot;).</p>
                         <p>By clicking &quot;Agree&quot; or by using this Service, you acknowledge that you have read, understood, and agree to be bound by all the terms and conditions outlined below.</p>
                         
                         <h3 className="font-semibold text-foreground">1. No Official Affiliation</h3>
@@ -3191,7 +3192,7 @@ const formatPolishedName = (name: string): string => {
                         Google Drive Files
                     </DialogTitle>
                     <DialogDescription>
-                        View generated files and open the folders saved by School Forms Generator.
+                        View generated files and open the folders saved by TeachTiangge.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -3321,7 +3322,122 @@ const formatPolishedName = (name: string): string => {
             </DialogContent>
         </Dialog>
 
-        <div className="max-w-5xl mx-auto w-full space-y-8">
+                <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)]">
+            <div className="flex h-full flex-col gap-4 rounded-2xl border bg-card/95 p-4 shadow-lg shadow-primary/5">
+              <div className="rounded-2xl bg-primary p-4 text-primary-foreground shadow-md shadow-primary/25">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-11 items-center justify-center rounded-xl bg-white/15">
+                    <Store className="size-5" />
+                  </span>
+                  <div>
+                    <p className="text-lg font-bold leading-tight">TeachTiangge</p>
+                    <p className="text-xs leading-snug text-primary-foreground/80">Your go to digital store for teaching related materials.</p>
+                  </div>
+                </div>
+              </div>
+
+              <nav className="space-y-1" aria-label="TeachTiangge workspace">
+                {[
+                  { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+                  { id: 'generator' as const, label: 'School Forms Generator', icon: FileText },
+                  { id: 'marketplace' as const, label: 'Marketplace', icon: ShoppingBag },
+                ].map(item => {
+                  const Icon = item.icon;
+                  const active = activeWorkspaceSection === item.id;
+                  return (
+                    <Button
+                      key={item.id}
+                      variant={active ? 'default' : 'ghost'}
+                      className={cn('h-11 w-full justify-start rounded-xl px-3', active && 'shadow-md shadow-primary/20')}
+                      onClick={() => setActiveWorkspaceSection(item.id)}
+                    >
+                      <Icon className="size-4" />
+                      {item.label}
+                    </Button>
+                  );
+                })}
+              </nav>
+
+              {authUser && (
+                <div className="mt-auto rounded-2xl border bg-background/80 p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Available Tokens</p>
+                      <p className="text-3xl font-bold text-foreground">{availableTokens}</p>
+                    </div>
+                    <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Coins className="size-6" />
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Button size="sm" onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
+                    <Button size="sm" variant="outline" onClick={handleOpenTokenHistory}>History</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <main className="min-w-0 space-y-8">
+            {activeWorkspaceSection === 'dashboard' && (
+              <section className="overflow-hidden rounded-3xl border bg-card shadow-xl shadow-primary/5">
+                <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="p-6 sm:p-8 lg:p-10">
+                    <Badge className="mb-5 bg-accent text-accent-foreground hover:bg-accent">TeachTiangge Dashboard</Badge>
+                    <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-normal text-foreground sm:text-5xl">
+                      TeachTiangge
+                    </h1>
+                    <p className="mt-3 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+                      Your go to digital store for teaching related materials.
+                    </p>
+                    <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                      <Button size="lg" className="gap-2" onClick={() => setActiveWorkspaceSection('generator')}>
+                        <FileText className="size-5" />
+                        Open School Forms Generator
+                      </Button>
+                      <Button size="lg" variant="outline" className="gap-2" onClick={() => setActiveWorkspaceSection('marketplace')}>
+                        <ShoppingBag className="size-5" />
+                        Browse Marketplace
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 border-t bg-muted/30 p-6 sm:grid-cols-3 lg:grid-cols-1 lg:border-l lg:border-t-0">
+                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
+                      <p className="text-xs text-muted-foreground">Available Tokens</p>
+                      <p className="mt-1 text-3xl font-bold">{availableTokens}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
+                      <p className="text-xs text-muted-foreground">Selected Learners</p>
+                      <p className="mt-1 text-3xl font-bold">{totalSelectedStudents}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-background p-4 shadow-sm">
+                      <p className="text-xs text-muted-foreground">Processed Files</p>
+                      <p className="mt-1 text-3xl font-bold">{filesData.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {activeWorkspaceSection === 'marketplace' && (
+              <section className="rounded-3xl border bg-card p-6 shadow-lg shadow-primary/5 sm:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Badge variant="outline" className="mb-3">Marketplace</Badge>
+                    <h2 className="text-3xl font-bold tracking-normal">Teaching materials marketplace</h2>
+                    <p className="mt-2 max-w-2xl text-muted-foreground">
+                      A dedicated space for teaching templates, classroom resources, and digital materials. Your token wallet remains connected while this section grows.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setActiveWorkspaceSection('generator')}>
+                    Use Generator
+                  </Button>
+                </div>
+              </section>
+            )}
+
+            <div className={cn('max-w-5xl mx-auto w-full space-y-8', activeWorkspaceSection === 'generator' ? 'block' : 'hidden')}>
             <div className="p-4 md:p-6 bg-card border rounded-xl">
                  <Stepper currentStep={step} setStep={setStep} />
             </div>
@@ -4018,7 +4134,9 @@ const formatPolishedName = (name: string): string => {
                     </CardContent>
                 </Card>
             </div>
-          </div>
+            </div>
+          </main>
+        </div>
       </div>
     </TooltipProvider>
   );
