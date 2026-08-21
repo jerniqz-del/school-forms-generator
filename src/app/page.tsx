@@ -104,6 +104,7 @@ type FileInfo = {
     region?: string;
     address: string;
     municipality?: string;
+    schoolYear?: string;
 };
 
 type SharedInfo = {
@@ -1579,7 +1580,8 @@ const formatPolishedName = (name: string): string => {
                 division: firstFile.fileInfo.division || prev.division,
                 region: firstFile.fileInfo.region || prev.region,
                 school: firstFile.fileInfo.school || prev.school,
-                address: firstFile.fileInfo.address || prev.address
+                address: firstFile.fileInfo.address || prev.address,
+                schoolYear: firstFile.fileInfo.schoolYear || prev.schoolYear
               }));
               fileSpecificInfoSet = true;
             }
@@ -1621,8 +1623,18 @@ const formatPolishedName = (name: string): string => {
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
-                
+
                 const getCellValue = (row: number, col: number) => json[row]?.[col] || '';
+
+                const rawSchoolYear = String(getCellValue(3, 19)).trim();
+                const schoolYearMatch = rawSchoolYear.match(/\b(20\d{2})\s*[-\u2013\u2014/]\s*(20\d{2}|\d{2})\b/);
+                const parsedSchoolYear = schoolYearMatch
+                  ? `${schoolYearMatch[1]}-${
+                      schoolYearMatch[2].length === 2
+                        ? schoolYearMatch[1].slice(0, 2) + schoolYearMatch[2]
+                        : schoolYearMatch[2]
+                    }`
+                  : '';
                 
                 let gradeLevel = '';
                 const gradeValue = String(getCellValue(3, 30)).replace(/Grade /i, '').trim();
@@ -1750,10 +1762,11 @@ const formatPolishedName = (name: string): string => {
                                 parsedMunicipality = toProperCase(parsedMunicipality);
 
                 // Division from cell T3 (column 19)
-                let parsedDivision = String(getCellValue(2, 19) || getCellValue(3, 19) || '').trim();
+                let parsedDivision = String(getCellValue(2, 19) || '').trim();
                 if (!parsedDivision) {
                     for (let r = 1; r <= 4; r++) {
                         for (let c = 17; c <= 23; c++) {
+                            if (r === 3 && c === 19) continue;
                             const val = String(getCellValue(r, c) || '').trim();
                             if (val && !val.toLowerCase().includes('division') && !val.toLowerCase().includes('school') && !val.toLowerCase().includes('region')) {
                                 parsedDivision = val;
@@ -1807,6 +1820,7 @@ const formatPolishedName = (name: string): string => {
                         division: parsedDivision,
                         region: parsedRegion,
                         address: toProperCase(mostCommonMunicipality),
+                        schoolYear: parsedSchoolYear,
                     },
 
                     selectedRows: new Set(extractedData.map(s => s.LRN)),
