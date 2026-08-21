@@ -292,7 +292,6 @@ async function buildSf9DocxBlob({
     sharedInfo,
     croppedLogo,
     useMiddleInitial,
-    isPromo = false,
     previewOnly = false,
 }: {
     templateUrl: string;
@@ -300,7 +299,6 @@ async function buildSf9DocxBlob({
     sharedInfo: SharedInfo;
     croppedLogo: string | null;
     useMiddleInitial: boolean;
-    isPromo?: boolean;
     previewOnly?: boolean;
 }) {
     const response = await fetch(`/api/download-template?url=${encodeURIComponent(templateUrl)}`);
@@ -330,8 +328,19 @@ async function buildSf9DocxBlob({
         Name: useMiddleInitial ? formatNameWithMiddleInitialForDocx(student.Name) : student.Name,
     }));
 
-    if (isPromo && !previewOnly) {
-        const blankStudent: StudentRecord = { LRN: '', Name: '', Sex: '', Birthdate: '', Age: '', Barangay: '', Municipality: '', Province: '' };
+    if (!previewOnly) {
+        const blankStudent = {
+            LRN: '',
+            Name: '',
+            Sex: '' as const,
+            Birthdate: '',
+            Age: '' as const,
+            Barangay: '',
+            Municipality: '',
+            Province: '',
+            gradeLevel: '',
+            section: '',
+        };
         const lastStudentNumber = exportData.length;
         exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
         exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
@@ -1020,7 +1029,6 @@ const formatNameWithMiddleInitial = (name: string): string => {
 
 const handleGenerateSF9 = useCallback(async (
     generationState: AppState,
-    isPromo: boolean,
     options?: { showPaymentRecovery?: boolean }
 ): Promise<boolean> => {
     const {
@@ -1068,7 +1076,6 @@ const handleGenerateSF9 = useCallback(async (
                 sharedInfo: currentSharedInfo,
                 croppedLogo: currentCroppedLogo,
                 useMiddleInitial: useMI,
-                isPromo,
             });
             const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedCount}_students).docx`;
 
@@ -1271,7 +1278,7 @@ const handleGenerateSF9 = useCallback(async (
                   status: 'paid',
                   updatedAt: new Date().toISOString(),
               });
-              await handleGenerateSF9(restoredState, false, { showPaymentRecovery: true }); // isPromo is false for regular payment
+              await handleGenerateSF9(restoredState, { showPaymentRecovery: true });
           } else {
               toast({
                   variant: 'destructive',
@@ -1338,7 +1345,7 @@ const handleGenerateSF9 = useCallback(async (
               throw new Error(verifyData?.error || 'PayMongo has not confirmed this payment yet.');
           }
 
-          await handleGenerateSF9(restoredState, false, { showPaymentRecovery: true });
+          await handleGenerateSF9(restoredState, { showPaymentRecovery: true });
       } catch (error: any) {
           const message = error.message || 'Could not retry generation.';
           setPaymentRecoveryError(message);
@@ -1875,7 +1882,7 @@ const formatPolishedName = (name: string): string => {
                 variant: "success",
             });
             setIsPurchaseConfirmationOpen(false);
-            await handleGenerateSF9(generationState, true); // isPromo is true
+            await handleGenerateSF9(generationState);
             return;
         }
 
@@ -1894,7 +1901,7 @@ const formatPolishedName = (name: string): string => {
         setActiveReservationId(reservationData.reservationId);
         setIsPurchaseConfirmationOpen(false);
 
-        const generated = await handleGenerateSF9(generationState, false, { showPaymentRecovery: true });
+        const generated = await handleGenerateSF9(generationState, { showPaymentRecovery: true });
         if (!generated) {
             await fetch('/api/tokens/generation', {
                 method: 'POST',
@@ -2550,7 +2557,7 @@ const formatPolishedName = (name: string): string => {
                         selectedTemplateUrls,
                         useMiddleInitial,
                         documentType,
-                      }, false, { showPaymentRecovery: true })}
+                      }, { showPaymentRecovery: true })}
                       className="w-full"
                     >
                       Download Again Without Paying
