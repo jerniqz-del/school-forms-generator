@@ -2387,6 +2387,7 @@ const formatPolishedName = (name: string): string => {
         rewardTokens = Number(data?.rewardTokens || 0);
       }
 
+      resetState();
       clearStateFromLocalStorage();
       setActiveReservationId(null);
       setPaidGenerationNeedsConfirmation(false);
