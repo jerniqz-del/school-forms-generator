@@ -347,9 +347,21 @@ async function buildSf9DocxBlob({
         exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
     }
 
+    const formattedSection = fileData.fileInfo.section
+        .trim()
+        .split(/\s+/)
+        .map((word) => {
+            if (/^[IVXLCDM]+$/i.test(word)) {
+                return word.toUpperCase();
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join(' ');
+
     const finalData: any = {
         ...fileData.fileInfo,
         ...sharedInfo,
+        section: formattedSection,
         students: exportData,
         logo: croppedLogo ? 'logo' : undefined,
     };
