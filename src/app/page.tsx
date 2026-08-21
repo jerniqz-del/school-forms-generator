@@ -286,6 +286,15 @@ const formatNameWithMiddleInitialForDocx = (name: string): string => {
     return `${lastName}, ${firstName}${foundSuffix ? ' ' + foundSuffix : ''}`;
 };
 
+const sanitizeFileNamePart = (value: string, fallback: string): string => {
+    const sanitized = value
+        .trim()
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/[. ]+$/g, '');
+    return sanitized || fallback;
+};
+
 async function buildSf9DocxBlob({
     templateUrl,
     fileData,
@@ -1118,7 +1127,9 @@ const handleGenerateSF9 = useCallback(async (
                 masterZip.file(file.name, arrayBuffer);
             }
             exportBlob = masterZip.generate({ type: "blob" });
-            exportName = currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip";
+            const schoolName = sanitizeFileNamePart(currentSharedInfo.school, 'School');
+            const schoolYear = sanitizeFileNamePart(currentSharedInfo.schoolYear, 'School Year');
+            exportName = `SF9_${schoolName}_${schoolYear}.zip`;
         }
 
         saveAs(exportBlob, exportName);
