@@ -5,7 +5,6 @@ import {
   onAuthStateChanged,
   User,
   GoogleAuthProvider,
-  reauthenticateWithPopup,
   signInWithPopup,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
@@ -34,28 +33,6 @@ interface UserState {
   error: Error | null;
 }
 
-const GOOGLE_DRIVE_TOKEN_STORAGE_KEY = 'schoolFormsGeneratorGoogleDriveToken';
-const GOOGLE_DRIVE_TOKEN_TTL_MS = 50 * 60 * 1000;
-
-function getCachedGoogleDriveAccessToken() {
-  if (typeof window === 'undefined') return null;
-
-  const rawToken = sessionStorage.getItem(GOOGLE_DRIVE_TOKEN_STORAGE_KEY);
-  if (!rawToken) return null;
-
-  try {
-    const cached = JSON.parse(rawToken) as { accessToken?: string; expiresAt?: number };
-    if (cached.accessToken && cached.expiresAt && cached.expiresAt > Date.now()) {
-      return cached.accessToken;
-    }
-  } catch {
-    sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_STORAGE_KEY);
-  }
-
-  sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_STORAGE_KEY);
-  return null;
-}
-
 function getGoogleSignInErrorMessage(error: unknown) {
   const authError = error as { code?: string; message?: string };
 
@@ -73,18 +50,6 @@ function getGoogleSignInErrorMessage(error: unknown) {
     default:
       return authError.message || 'Could not sign in with Google. Please try again.';
   }
-}
-
-function cacheGoogleDriveAccessToken(accessToken?: string) {
-  if (typeof window === 'undefined' || !accessToken) return;
-
-  sessionStorage.setItem(
-    GOOGLE_DRIVE_TOKEN_STORAGE_KEY,
-    JSON.stringify({
-      accessToken,
-      expiresAt: Date.now() + GOOGLE_DRIVE_TOKEN_TTL_MS,
-    })
-  );
 }
 
 export const useUser = () => {
@@ -178,11 +143,8 @@ export const useUser = () => {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/drive.file');
     try {
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      cacheGoogleDriveAccessToken(credential?.accessToken);
+      await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Error during Google sign-in:", error);
       toast({
@@ -193,32 +155,7 @@ export const useUser = () => {
     }
   };
 
-  const getGoogleDriveAccessToken = async () => {
-    const cachedToken = getCachedGoogleDriveAccessToken();
-    if (cachedToken) return cachedToken;
-
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/drive.file');
-
-    const result = auth.currentUser
-      ? await reauthenticateWithPopup(auth.currentUser, provider)
-      : await signInWithPopup(auth, provider);
-
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Google Drive permission was not granted.');
-    }
-
-    cacheGoogleDriveAccessToken(credential.accessToken);
-    return credential.accessToken;
-  };
-
-  const getCachedGoogleDriveAccessTokenOnly = () => getCachedGoogleDriveAccessToken();
-
   const signOut = async () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_STORAGE_KEY);
-    }
     await firebaseSignOut(auth);
     setUserState({ user: null, profile: null, isAdmin: false, isSuperAdmin: false, isSchoolAdmin: false, isSchoolHead: false, isUserLoading: false, error: null });
   };
@@ -231,5 +168,5 @@ export const useUser = () => {
     return () => unsubscribe();
   }, [handleUser, auth]);
 
-  return { ...userState, signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly, signOut };
+  return { ...userState, signInWithGoogle, signOut };
 };

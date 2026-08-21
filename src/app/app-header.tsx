@@ -244,7 +244,7 @@ export function AppHeader({
                     <AlertDialogHeader>
                         <AlertDialogTitle>Reset your account?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This clears your current workspace, cached Drive folders, pending reload checkout sessions, and releases reserved tokens. Your bought tokens, token history, and sign-in account are kept.
+                            This clears your current workspace, pending reload checkout sessions, and releases reserved tokens. Your bought tokens, token history, and sign-in account are kept.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -26,7 +26,7 @@ function LoginContent() {
         <CardHeader className="text-center">
           <CardTitle>Sign In</CardTitle>
           <CardDescription>
-            Use your Google account to keep tokens connected to you and enable Google Drive backup.
+            Use your Google account to keep tokens connected to you.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -37,7 +37,7 @@ function LoginContent() {
             disabled={isUserLoading}
           >
             <LogIn className="size-4" />
-            Continue with Google and Drive Backup
+            Continue with Google
           </Button>
         </CardContent>
       </Card>

@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, Link, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, Store } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, Store } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -66,11 +66,11 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { AppHeader } from '@/app/app-header';
 import { useDisclaimer } from '@/app/(main)/disclaimer-context';
 import { useUser as useFirebaseUser } from '@/firebase/provider';
 import { useUser as useAuthUser } from '@/firebase/auth/use-user';
-import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
@@ -181,7 +181,6 @@ type AppState = {
   selectedTemplateUrls: { [gradeLevel: string]: string };
   useMiddleInitial: boolean;
   documentType: PricedDocumentType;
-  saveToDriveBackup: boolean;
 };
 
 type PaidGenerationTokenLedger = {
@@ -236,15 +235,6 @@ type TokenHistoryItem = {
   checkoutSessionId: string | null;
   reservationId: string | null;
   createdAt: string | null;
-};
-
-type DriveBackupFile = {
-  id: string;
-  name: string;
-  mimeType: string;
-  webViewLink?: string;
-  modifiedTime?: string;
-  size?: string;
 };
 
 const regions = [
@@ -449,10 +439,6 @@ const IS_DEVELOPER_PROMO_ENABLED = process.env.NODE_ENV !== 'production';
 const IS_PDF_OUTPUT_ENABLED = false;
 const IS_LIVE_PDF_PREVIEW_ENABLED = false;
 const PAID_GENERATION_TOKENS_STORAGE_KEY = 'paidGenerationTokens';
-const DRIVE_BACKUP_FOLDER_STORAGE_KEY = 'schoolFormsGeneratorDriveFolderId';
-const DRIVE_BACKUP_FOLDER_NAME = 'School Forms Generator - Generated SF9';
-const DRIVE_UPLOAD_FOLDER_STORAGE_KEY = 'schoolFormsGeneratorUploadFolderId';
-const DRIVE_UPLOAD_FOLDER_NAME = 'School Forms Generator - Uploaded SF1';
 
 
 const HistoryBadges = ({
@@ -535,147 +521,6 @@ function limitFilesDataToSelectedCount(filesData: FileData[], maxSelected: numbe
 
     return { ...fileData, selectedRows: limitedRows };
   });
-}
-
-function getDriveFileMimeType(fileName: string) {
-  const lowerFileName = fileName.toLowerCase();
-  if (lowerFileName.endsWith('.zip')) return 'application/zip';
-  if (lowerFileName.endsWith('.pdf')) return 'application/pdf';
-  if (lowerFileName.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  if (lowerFileName.endsWith('.xls')) return 'application/vnd.ms-excel';
-  return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-}
-
-async function createDriveFolder(accessToken: string, folderName: string) {
-  const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error?.message || 'Could not create Google Drive backup folder.');
-  }
-
-  return response.json();
-}
-
-async function getDriveFolderId(accessToken: string, storageKey: string, folderName: string) {
-  const savedFolderId = typeof window !== 'undefined'
-    ? localStorage.getItem(storageKey)
-    : null;
-
-  if (savedFolderId) {
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(savedFolderId)}?fields=id,trashed`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const data = await response.json().catch(() => null);
-    if (response.ok && !data?.trashed) return savedFolderId;
-  }
-
-  const folder = await createDriveFolder(accessToken, folderName);
-  if (typeof window !== 'undefined' && folder?.id) {
-    localStorage.setItem(storageKey, folder.id);
-  }
-  return folder.id as string;
-}
-
-async function getDriveBackupFolderId(accessToken: string) {
-  return getDriveFolderId(accessToken, DRIVE_BACKUP_FOLDER_STORAGE_KEY, DRIVE_BACKUP_FOLDER_NAME);
-}
-
-async function getDriveUploadFolderId(accessToken: string) {
-  return getDriveFolderId(accessToken, DRIVE_UPLOAD_FOLDER_STORAGE_KEY, DRIVE_UPLOAD_FOLDER_NAME);
-}
-
-async function getDriveBackupFolder(accessToken: string) {
-  const folderId = await getDriveBackupFolderId(accessToken);
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,webViewLink`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Could not load Google Drive backup folder.');
-  }
-
-  return data as { id: string; name: string; webViewLink?: string };
-}
-
-async function getDriveUploadFolder(accessToken: string) {
-  const folderId = await getDriveUploadFolderId(accessToken);
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name,webViewLink`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Could not load Google Drive upload folder.');
-  }
-
-  return data as { id: string; name: string; webViewLink?: string };
-}
-
-async function listGoogleDriveBackupFiles(accessToken: string) {
-  const folderId = await getDriveBackupFolderId(accessToken);
-  const params = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,size)',
-    orderBy: 'modifiedTime desc',
-    pageSize: '25',
-  });
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Could not load generated files from Google Drive.');
-  }
-
-  return data.files as DriveBackupFile[];
-}
-
-async function uploadBlobToGoogleDrive(accessToken: string, fileName: string, blob: Blob, folderId?: string) {
-  const targetFolderId = folderId || await getDriveBackupFolderId(accessToken);
-  const mimeType = getDriveFileMimeType(fileName);
-  const metadata = {
-    name: fileName,
-    parents: [targetFolderId],
-  };
-  const boundary = `school_forms_generator_${Date.now()}`;
-  const body = new Blob([
-    `--${boundary}\r\n`,
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-    JSON.stringify(metadata),
-    `\r\n--${boundary}\r\n`,
-    `Content-Type: ${mimeType}\r\n\r\n`,
-    blob,
-    `\r\n--${boundary}--`,
-  ], { type: `multipart/related; boundary=${boundary}` });
-
-  const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Could not save the file to Google Drive.');
-  }
-
-  return data as { id: string; name: string; webViewLink?: string };
 }
 
 function getTokenHistoryTitle(type: string) {
@@ -801,7 +646,6 @@ export default function Home() {
 
   const [paperSize, setPaperSize] = useState('Custom');
   const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
-  const [saveToDriveBackup, setSaveToDriveBackup] = useState(true);
 
   const [isPostGenerateDialogOpen, setIsPostGenerateDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
@@ -817,11 +661,6 @@ export default function Home() {
   const [isTokenHistoryOpen, setIsTokenHistoryOpen] = useState(false);
   const [isTokenHistoryLoading, setIsTokenHistoryLoading] = useState(false);
   const [isReferralRewardsOpen, setIsReferralRewardsOpen] = useState(false);
-  const [isDriveFilesOpen, setIsDriveFilesOpen] = useState(false);
-  const [isDriveFilesLoading, setIsDriveFilesLoading] = useState(false);
-  const [driveBackupFiles, setDriveBackupFiles] = useState<DriveBackupFile[]>([]);
-  const [driveBackupFolderLink, setDriveBackupFolderLink] = useState<string | null>(null);
-  const [driveUploadFolderLink, setDriveUploadFolderLink] = useState<string | null>(null);
   const [tokenHistory, setTokenHistory] = useState<TokenHistoryItem[]>([]);
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [reloadAmountPesos, setReloadAmountPesos] = useState(TOKEN_RELOAD_MIN_PESOS);
@@ -846,7 +685,7 @@ export default function Home() {
 
   const { toast } = useToast();
   const { user: authUser, isUserLoading } = useFirebaseUser();
-  const { signInWithGoogle, getGoogleDriveAccessToken, getCachedGoogleDriveAccessTokenOnly } = useAuthUser();
+  const { signInWithGoogle } = useAuthUser();
 
   const getAuthHeaders = useCallback(async (forceRefresh = false) => {
     if (!authUser) {
@@ -1063,14 +902,13 @@ export default function Home() {
       selectedTemplateUrls,
       useMiddleInitial,
       documentType,
-      saveToDriveBackup,
     };
     try {
       localStorage.setItem('appState', JSON.stringify(stateToSave));
     } catch(e) {
       console.error("Could not save state to localStorage", e);
     }
-  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType, saveToDriveBackup]);
+  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType]);
 
   const loadStateFromLocalStorage = useCallback((): AppState | null => {
     try {
@@ -1081,7 +919,6 @@ export default function Home() {
         return {
           ...parsedState,
           documentType: IS_PDF_OUTPUT_ENABLED && parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
-          saveToDriveBackup: parsedState.saveToDriveBackup !== false,
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -1193,7 +1030,6 @@ const handleGenerateSF9 = useCallback(async (
         selectedTemplateUrls: currentTemplateUrls,
         useMiddleInitial: useMI,
         documentType: currentDocumentType,
-        saveToDriveBackup: shouldSaveToDriveBackup,
     } = generationState;
 
     const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
@@ -1278,22 +1114,6 @@ const handleGenerateSF9 = useCallback(async (
             exportName = currentDocumentType === 'pdf' ? "Generated_SF9_PDF_Documents.zip" : "Generated_SF9_Documents.zip";
         }
 
-        let driveBackupLink: string | undefined;
-        if (shouldSaveToDriveBackup) {
-            try {
-                setLoadingMessage('Saving backup to Google Drive...');
-                const driveAccessToken = await getGoogleDriveAccessToken();
-                const driveFile = await uploadBlobToGoogleDrive(driveAccessToken, exportName, exportBlob);
-                driveBackupLink = driveFile.webViewLink;
-            } catch (driveError: any) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Google Drive Backup Failed',
-                    description: driveError.message || 'The file was generated, but could not be saved to Google Drive.',
-                });
-            }
-        }
-
         saveAs(exportBlob, exportName);
 
         if (options?.showPaymentRecovery) {
@@ -1321,9 +1141,7 @@ const handleGenerateSF9 = useCallback(async (
         toast({
             variant: 'success',
             title: 'Generation Complete',
-            description: driveBackupLink
-                ? `${exportName} was generated and backed up to Google Drive.`
-                : `${generatedFiles.length} ${currentDocumentType.toUpperCase()} document(s) have been generated.`,
+            description: generatedFiles.length + ' ' + currentDocumentType.toUpperCase() + ' document(s) have been generated.',
         });
         return true;
 
@@ -1345,7 +1163,7 @@ const handleGenerateSF9 = useCallback(async (
     } finally {
         setIsProcessing(false);
     }
-}, [authUser?.uid, getGoogleDriveAccessToken, savePaidGenerationTokens, toast]);
+}, [authUser?.uid, savePaidGenerationTokens, toast]);
 
 
   useEffect(() => {
@@ -1758,25 +1576,6 @@ const formatPolishedName = (name: string): string => {
         }
     }
 
-    if (saveToDriveBackup && processedFiles.length > 0) {
-      const driveAccessToken = getCachedGoogleDriveAccessTokenOnly();
-      if (driveAccessToken) {
-        try {
-          setLoadingMessage('Saving uploaded files to Google Drive...');
-          const uploadFolderId = await getDriveUploadFolderId(driveAccessToken);
-          await Promise.all(
-            pendingFiles.map(file => uploadBlobToGoogleDrive(driveAccessToken, file.name, file, uploadFolderId))
-          );
-        } catch (driveError: any) {
-          toast({
-            variant: 'destructive',
-            title: 'Uploaded File Backup Failed',
-            description: driveError.message || 'The SF1 files were processed, but could not be saved to Google Drive.',
-          });
-        }
-      }
-    }
-
     setFilesData(processedFiles);
     setOpenAccordions(processedFiles.map(f => f.id));
     
@@ -2063,7 +1862,6 @@ const formatPolishedName = (name: string): string => {
       selectedTemplateUrls,
       useMiddleInitial,
       documentType,
-      saveToDriveBackup,
     };
     
     setLoadingMessage('Processing your request...');
@@ -2226,32 +2024,6 @@ const formatPolishedName = (name: string): string => {
     }
   };
 
-  const handleOpenDriveFiles = async () => {
-    setIsDriveFilesOpen(true);
-    setIsDriveFilesLoading(true);
-
-    try {
-      const accessToken = await getGoogleDriveAccessToken();
-      const [folder, uploadFolder, files] = await Promise.all([
-        getDriveBackupFolder(accessToken),
-        getDriveUploadFolder(accessToken),
-        listGoogleDriveBackupFiles(accessToken),
-      ]);
-      setDriveBackupFolderLink(folder.webViewLink || null);
-      setDriveUploadFolderLink(uploadFolder.webViewLink || null);
-      setDriveBackupFiles(files || []);
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Google Drive Files Failed',
-        description: error.message || 'Could not load generated files from Google Drive.',
-      });
-    } finally {
-      setIsDriveFilesLoading(false);
-    }
-  };
-
-
   const handleApplyPromoCode = () => {
     if (!IS_DEVELOPER_PROMO_ENABLED) {
       setIsPromoApplied(false);
@@ -2397,19 +2169,13 @@ const formatPolishedName = (name: string): string => {
     resetState();
     clearStateFromLocalStorage();
     try {
-      localStorage.removeItem(DRIVE_BACKUP_FOLDER_STORAGE_KEY);
-      localStorage.removeItem(DRIVE_UPLOAD_FOLDER_STORAGE_KEY);
       sessionStorage.removeItem('previousSchoolLogos');
       sessionStorage.removeItem('previousSchoolInfo');
-      sessionStorage.removeItem('schoolFormsGeneratorGoogleDriveToken');
     } catch (error) {
       console.error("Could not clear account reset storage:", error);
     }
     setPreviousLogos([]);
     setPreviousInfo(initialPreviousInfo);
-    setDriveBackupFiles([]);
-    setDriveBackupFolderLink(null);
-    setDriveUploadFolderLink(null);
     refreshTokenWallet().catch(error => {
       toast({
         variant: 'destructive',
@@ -2578,7 +2344,6 @@ const formatPolishedName = (name: string): string => {
   const currentStepLabel = step === 1 ? 'Upload SF1 files' : step === 2 ? 'Select learners' : 'Finalize and generate';
   const hasGeneratorDraft = pendingFiles.length > 0 || filesData.length > 0 || totalSelectedStudents > 0;
   const latestTokenHistory = tokenHistory.slice(0, 3);
-  const latestDriveFiles = driveBackupFiles.slice(0, 3);
 
   const handleGenerateAnother = () => {
     resetState();
@@ -2660,7 +2425,7 @@ const formatPolishedName = (name: string): string => {
                 </div>
                 <DialogTitle className="text-center">Sign In Required</DialogTitle>
                 <DialogDescription className="text-center">
-                  Sign in with Google before using TeachTiangge. Your account keeps tokens connected to you and enables Google Drive backup.
+                  Sign in with Google before using TeachTiangge. Your account keeps tokens connected to you.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -2670,7 +2435,7 @@ const formatPolishedName = (name: string): string => {
                   onClick={signInWithGoogle}
                 >
                   <LogIn className="size-4" />
-                  Continue with Google and Drive Backup
+                  Continue with Google
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -2694,7 +2459,6 @@ const formatPolishedName = (name: string): string => {
                         <ul className="list-disc pl-5 space-y-2">
                             <li><span className="font-semibold">Client-Side Document Processing:</span> Your School Form 1 (SF1) file and the sensitive student data it contains are processed in your browser for document generation.</li>
                             <li><span className="font-semibold">No Data Upload or Storage:</span> The file is read directly by your web browser, and the School Form 9 (SF9) is generated locally on your device. No student data is ever uploaded, sent to, or stored on our servers.</li>
-                            <li><span className="font-semibold">Optional Google Drive Backup:</span> When enabled, the generated document is uploaded directly from your browser to your own Google Drive account using Google Drive permission.</li>
                             <li><span className="font-semibold">Accounts and Tokens:</span> Google sign-in is used to connect token balances, reloads, referrals, sharing activity, and generation reservations to your account.</li>
                             <li><span className="font-semibold">Secure Payment:</span> PayMongo is used only for token reload payments. Student names, LRNs, and generated documents are not sent to PayMongo.</li>
                         </ul>
@@ -2786,7 +2550,6 @@ const formatPolishedName = (name: string): string => {
                         selectedTemplateUrls,
                         useMiddleInitial,
                         documentType,
-                        saveToDriveBackup,
                       }, false, { showPaymentRecovery: true })}
                       className="w-full"
                     >
@@ -3159,82 +2922,6 @@ const formatPolishedName = (name: string): string => {
             </DialogContent>
         </Dialog>
 
-        <Dialog open={isDriveFilesOpen} onOpenChange={setIsDriveFilesOpen}>
-            <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Files className="size-5 text-primary" />
-                        Google Drive Files
-                    </DialogTitle>
-                    <DialogDescription>
-                        View generated files and open the folders saved by TeachTiangge.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={handleOpenDriveFiles} disabled={isDriveFilesLoading}>
-                            {isDriveFilesLoading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCw className="mr-2 size-4" />}
-                            Refresh
-                        </Button>
-                        <Button
-                            variant="outline"
-                            disabled={!driveBackupFolderLink}
-                            onClick={() => driveBackupFolderLink && window.open(driveBackupFolderLink, '_blank', 'noopener,noreferrer')}
-                        >
-                            <Link className="mr-2 size-4" />
-                            Open Generated Folder
-                        </Button>
-                        <Button
-                            variant="outline"
-                            disabled={!driveUploadFolderLink}
-                            onClick={() => driveUploadFolderLink && window.open(driveUploadFolderLink, '_blank', 'noopener,noreferrer')}
-                        >
-                            <Upload className="mr-2 size-4" />
-                            Open Uploaded SF1 Folder
-                        </Button>
-                    </div>
-                    <div className="rounded-lg border">
-                        <div className="max-h-80 divide-y overflow-y-auto">
-                            {isDriveFilesLoading ? (
-                                <div className="flex items-center justify-center gap-2 px-3 py-10 text-sm text-muted-foreground">
-                                    <Loader2 className="size-4 animate-spin" />
-                                    Loading Google Drive files...
-                                </div>
-                            ) : driveBackupFiles.length ? driveBackupFiles.map(file => (
-                                <div key={file.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm">
-                                    <div className="flex min-w-0 items-center gap-3">
-                                        <FileIcon className="size-5 shrink-0 text-primary" />
-                                        <div className="min-w-0">
-                                            <p className="truncate font-medium">{file.name}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {file.modifiedTime ? new Date(file.modifiedTime).toLocaleString() : 'Saved file'}
-                                                {file.size ? ` • ${(Number(file.size) / 1024 / 1024).toFixed(2)} MB` : ''}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!file.webViewLink}
-                                        onClick={() => file.webViewLink && window.open(file.webViewLink, '_blank', 'noopener,noreferrer')}
-                                    >
-                                        Open
-                                    </Button>
-                                </div>
-                            )) : (
-                                <div className="px-3 py-10 text-center text-sm text-muted-foreground">
-                                    No generated files found in your Google Drive backup folder yet.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                        Only files created by this app with your Drive permission are shown here.
-                    </p>
-                </div>
-            </DialogContent>
-        </Dialog>
-
         <Dialog open={isTokenShareOpen} onOpenChange={setIsTokenShareOpen}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -3348,7 +3035,6 @@ const formatPolishedName = (name: string): string => {
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Button size="sm" onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
                     <Button size="sm" variant="outline" onClick={handleOpenTokenHistory}>History</Button>
-                    <Button size="sm" variant="outline" onClick={handleOpenDriveFiles}>Drive</Button>
                     <Button size="sm" variant="outline" onClick={() => setIsTokenShareOpen(true)}>Share</Button>
                   </div>
                   {tokenWallet?.referralCode && (
@@ -3466,33 +3152,21 @@ const formatPolishedName = (name: string): string => {
                   <Card className="xl:col-span-1">
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-lg">
-                        <Files className="size-5 text-primary" />
-                        Recent Generated Files
+                        <Download className="size-5 text-primary" />
+                        Local Downloads
                       </CardTitle>
-                      <CardDescription>Google Drive backup files.</CardDescription>
+                      <CardDescription>Generated files stay on your device.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {latestDriveFiles.length ? latestDriveFiles.map(file => (
-                        <button
-                          key={file.id}
-                          type="button"
-                          className="flex w-full items-center justify-between gap-3 rounded-xl border bg-background p-3 text-left text-sm transition-colors hover:bg-muted/60"
-                          onClick={() => file.webViewLink && window.open(file.webViewLink, '_blank', 'noopener,noreferrer')}
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-semibold">{file.name}</span>
-                            <span className="text-xs text-muted-foreground">{file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : 'Saved file'}</span>
-                          </span>
-                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                        </button>
-                      )) : (
-                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          Open Drive files once to load your recent generated documents here.
-                        </div>
-                      )}
-                      <Button variant="outline" className="w-full" onClick={handleOpenDriveFiles} disabled={isDriveFilesLoading}>
-                        {isDriveFilesLoading ? <Loader2 className="size-4 animate-spin" /> : <Files className="size-4" />}
-                        Load Drive Files
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                        Generated documents download directly to your device.
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setActiveWorkspaceSection('generator')}
+                      >
+                        Open Generator
                       </Button>
                     </CardContent>
                   </Card>
@@ -4145,13 +3819,6 @@ const formatPolishedName = (name: string): string => {
                                 <div className="flex items-center justify-between rounded-lg border bg-background p-4 text-sm">
                                     <span className="font-semibold">DOCX</span>
                                     <span className="text-xs text-muted-foreground">{TOKENS_PER_STUDENT_FORM} tokens/student</span>
-                                </div>
-                                <div className="flex items-center justify-between gap-4 rounded-lg border bg-background p-4 text-sm">
-                                    <div>
-                                        <span className="font-semibold">Google Drive Backup</span>
-                                        <p className="text-xs text-muted-foreground">Save a copy to your Google Drive before download.</p>
-                                    </div>
-                                    <Switch checked={saveToDriveBackup} onCheckedChange={setSaveToDriveBackup} />
                                 </div>
                             </div>
                              {uniqueGradeLevels.length > 0 ? (
