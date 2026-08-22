@@ -363,8 +363,10 @@ async function buildSf9DocxBlob({
             section: formattedSection,
         };
         const lastStudentNumber = exportData.length;
-        exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
-        exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
+        exportData.unshift(
+            { ...blankStudent, 'No.': lastStudentNumber + 1 },
+            { ...blankStudent, 'No.': lastStudentNumber + 2 }
+        );
     }
 
     const finalData: any = {
