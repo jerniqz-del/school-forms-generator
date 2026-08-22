@@ -576,73 +576,6 @@ function formatTokenHistoryDate(value: string | null) {
 }
 
 
-const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
-    const steps = [
-        { id: 1, title: 'Upload' },
-        { id: 2, title: 'Select Templates' },
-        { id: 3, title: 'Generate' }
-    ];
-
-    return (
-        <nav aria-label="Progress">
-            <ol role="list" className="grid grid-cols-3">
-                {steps.map((step, stepIdx) => {
-                    const isCompleted = currentStep > step.id;
-                    const isCurrent = currentStep === step.id;
-
-                    return (
-                        <li key={step.title} className="relative flex min-w-0 flex-col items-center gap-2">
-                            {stepIdx < steps.length - 1 && (
-                                <div
-                                    className={cn(
-                                        'absolute left-1/2 top-[15px] h-0.5 w-full',
-                                        isCompleted ? 'bg-primary' : 'bg-border'
-                                    )}
-                                    aria-hidden="true"
-                                />
-                            )}
-
-                            {isCompleted ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setStep(step.id)}
-                                    className="relative z-10 flex size-8 items-center justify-center rounded-full bg-primary transition-colors hover:bg-primary/80"
-                                    aria-label={'Return to ' + step.title}
-                                >
-                                    <CheckCircle2 className="size-5 text-primary-foreground" aria-hidden="true" />
-                                </button>
-                            ) : (
-                                <div
-                                    className={cn(
-                                        'relative z-10 flex size-8 items-center justify-center rounded-full border-2 bg-background',
-                                        isCurrent ? 'border-primary' : 'border-border'
-                                    )}
-                                    aria-current={isCurrent ? 'step' : undefined}
-                                >
-                                    <span
-                                        className={cn('size-2.5 rounded-full', isCurrent ? 'bg-primary' : 'bg-transparent')}
-                                        aria-hidden="true"
-                                    />
-                                </div>
-                            )}
-
-                            <span
-                                className={cn(
-                                    'min-h-8 px-1 text-center text-[11px] font-medium leading-tight sm:text-xs',
-                                    isCompleted || isCurrent ? 'text-primary' : 'text-muted-foreground'
-                                )}
-                            >
-                                {step.title}
-                            </span>
-                        </li>
-                    );
-                })}
-            </ol>
-        </nav>
-    );
-};
-
-
 export default function Home() {
   const [step, setStep] = useState(1);
   const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<'dashboard' | 'generator' | 'marketplace'>('dashboard');
@@ -3280,10 +3213,7 @@ const formatPolishedName = (name: string): string => {
             )}
 
             <div className={cn('max-w-5xl mx-auto w-full space-y-8', activeWorkspaceSection === 'generator' ? 'block' : 'hidden')}>
-            <div className="sticky top-20 z-30 rounded-2xl border bg-card/95 p-3 shadow-lg shadow-primary/5 backdrop-blur md:p-4">
-                 <Stepper currentStep={step} setStep={setStep} />
-            </div>
-           
+
             <div className={cn(step === 1 ? 'block' : 'hidden')}>
                  <Card className="w-full shadow-lg border-primary/20">
                     <CardHeader>
