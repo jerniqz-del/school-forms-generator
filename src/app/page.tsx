@@ -330,6 +330,17 @@ async function buildSf9DocxBlob({
     });
 
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
+    const formattedSection = fileData.fileInfo.section
+        .trim()
+        .split(/\s+/)
+        .map((word) => {
+            if (/^[IVXLCDM]+$/i.test(word)) {
+                return word.toUpperCase();
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join(' ');
+
     const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
     const studentsForRender = previewOnly ? selectedStudents.slice(0, 1) : selectedStudents;
     let exportData = studentsForRender.map((student, index) => ({
@@ -348,24 +359,13 @@ async function buildSf9DocxBlob({
             Barangay: '',
             Municipality: '',
             Province: '',
-            gradeLevel: '',
-            section: '',
+            gradeLevel: fileData.fileInfo.gradeLevel,
+            section: formattedSection,
         };
         const lastStudentNumber = exportData.length;
         exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 1 });
         exportData.push({ ...blankStudent, 'No.': lastStudentNumber + 2 });
     }
-
-    const formattedSection = fileData.fileInfo.section
-        .trim()
-        .split(/\s+/)
-        .map((word) => {
-            if (/^[IVXLCDM]+$/i.test(word)) {
-                return word.toUpperCase();
-            }
-            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-        })
-        .join(' ');
 
     const finalData: any = {
         ...fileData.fileInfo,
