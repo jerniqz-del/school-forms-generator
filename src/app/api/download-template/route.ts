@@ -22,10 +22,13 @@ export async function GET(request: NextRequest) {
     }
 
     const arrayBuffer = await response.arrayBuffer();
+    const contentType = parsedUrl.pathname.toLowerCase().endsWith('.pdf')
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     return new NextResponse(arrayBuffer, {
       headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Type': contentType,
       },
     });
   } catch (error: any) {

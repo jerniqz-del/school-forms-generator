@@ -82,6 +82,10 @@ import {
   calculateTokenCost,
   calculateTokenReload,
 } from '@/lib/tokens';
+import {
+  buildKindergartenTemplateFields,
+  getDefaultSchoolYearStartDate,
+} from '@/lib/kindergarten-template';
 
 type StudentRecord = {
   LRN: string;
@@ -92,6 +96,8 @@ type StudentRecord = {
   Barangay: string;
   Municipality: string;
   Province: string;
+  FatherName: string;
+  MotherName: string;
 };
 
 type FileInfo = {
@@ -117,6 +123,7 @@ type SharedInfo = {
     region: string;
     address: string;
     schoolYear: string;
+    schoolYearStartDate: string;
 };
 
 type FileData = {
@@ -149,6 +156,7 @@ const initialSharedInfo: SharedInfo = {
     region: 'Region V',
     address: '',
     schoolYear: '',
+    schoolYearStartDate: '',
 };
 
 type PreviousInfo = {
@@ -343,10 +351,23 @@ async function buildSf9DocxBlob({
 
     const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
     const studentsForRender = previewOnly ? selectedStudents.slice(0, 1) : selectedStudents;
+    const ageReferenceDate =
+        sharedInfo.schoolYearStartDate || getDefaultSchoolYearStartDate(sharedInfo.schoolYear);
     let exportData = studentsForRender.map((student, index) => ({
         ...student,
+        ...buildKindergartenTemplateFields(
+            student.LRN,
+            student.Birthdate,
+            ageReferenceDate
+        ),
         'No.': index + 1,
         Name: useMiddleInitial ? formatNameWithMiddleInitialForDocx(student.Name) : student.Name,
+        FatherName: useMiddleInitial
+            ? formatNameWithMiddleInitialForDocx(student.FatherName || '')
+            : student.FatherName || '',
+        MotherName: useMiddleInitial
+            ? formatNameWithMiddleInitialForDocx(student.MotherName || '')
+            : student.MotherName || '',
     }));
 
     if (!previewOnly) {
@@ -359,6 +380,9 @@ async function buildSf9DocxBlob({
             Barangay: '',
             Municipality: '',
             Province: '',
+            FatherName: '',
+            MotherName: '',
+            ...buildKindergartenTemplateFields('', '', ageReferenceDate),
             gradeLevel: fileData.fileInfo.gradeLevel,
             section: formattedSection,
         };
@@ -414,7 +438,13 @@ function centerAspectCrop(
   )
 }
 
+const KINDER_COVER_TEMPLATE_NAME = 'Latest KPRC and PECD Cover Page.docx';
+const KINDER_CONTENT_PDF_NAME = 'Latest KPRC and PECD Content Pages 3-10.pdf';
+const KINDER_CONTENT_PDF_URL =
+  'https://raw.githubusercontent.com/jerniqz-del/schoolform9/main/Latest%20KPRC%20and%20PECD%20Content%20Pages%203-10.pdf';
+
 const masterTemplateOrder = [
+  KINDER_COVER_TEMPLATE_NAME,
   'Kinder Report Card.docx',
   'Kinder PECD.docx',
   'Grade One.docx',
@@ -432,7 +462,7 @@ const masterTemplateOrder = [
 ];
 
 const gradeToTemplateMap: { [key: string]: string } = {
-  'Kinder': 'Kinder Report Card.docx',
+  'Kinder': KINDER_COVER_TEMPLATE_NAME,
   'One': 'Grade One.docx',
   'Two': 'Grade Two.docx',
   'Three': 'Grade Three.docx',
@@ -791,6 +821,7 @@ export default function Home() {
                     municipality: parsed.municipality?.[0] || '',
                     address: parsed.address?.[0] || '',
                     schoolYear: parsed.schoolYear?.[0] || '',
+                    schoolYearStartDate: getDefaultSchoolYearStartDate(parsed.schoolYear?.[0] || ''),
                 });
       }
     } catch (error) {
@@ -1006,6 +1037,21 @@ const handleGenerateSF9 = useCallback(async (
     try {
         const filesToGenerate = currentFilesData.filter(fileData => fileData.selectedRows.size > 0);
         const generatedFiles: { name: string; blob: Blob }[] = [];
+        let kinderContentPdfPromise: Promise<Blob> | null = null;
+        const getKinderContentPdf = () => {
+            if (!kinderContentPdfPromise) {
+                kinderContentPdfPromise = (async () => {
+                    const response = await fetch(
+                        `/api/download-template?url=${encodeURIComponent(KINDER_CONTENT_PDF_URL)}`
+                    );
+                    if (!response.ok) {
+                        throw new Error(`Failed to download ${KINDER_CONTENT_PDF_NAME}: ${response.statusText}`);
+                    }
+                    return response.blob();
+                })();
+            }
+            return kinderContentPdfPromise;
+        };
 
         for (const [index, fileData] of filesToGenerate.entries()) {
             const templateUrl = currentTemplateUrls[fileData.fileInfo.gradeLevel];
@@ -1048,13 +1094,21 @@ const handleGenerateSF9 = useCallback(async (
                     name: docxName.replace(/\.docx$/i, '.pdf'),
                     blob: pdfBlob,
                 });
-                continue;
+            } else {
+                generatedFiles.push({
+                    name: docxName,
+                    blob: output
+                });
             }
 
-            generatedFiles.push({
-                name: docxName,
-                blob: output
-            });
+            if (fileData.fileInfo.gradeLevel === 'Kinder') {
+                setLoadingMessage(`Adding Kindergarten content pages ${index + 1} of ${filesToGenerate.length}...`);
+                const contentPdf = await getKinderContentPdf();
+                generatedFiles.push({
+                    name: `${docxName.replace(/\.docx$/i, '')}_${KINDER_CONTENT_PDF_NAME}`,
+                    blob: contentPdf,
+                });
+            }
         }
 
         let exportBlob = generatedFiles[0].blob;
@@ -1520,7 +1574,10 @@ const formatPolishedName = (name: string): string => {
                 region: firstFile.fileInfo.region || prev.region,
                 school: firstFile.fileInfo.school || prev.school,
                 address: firstFile.fileInfo.address || prev.address,
-                schoolYear: firstFile.fileInfo.schoolYear || prev.schoolYear
+                schoolYear: firstFile.fileInfo.schoolYear || prev.schoolYear,
+                schoolYearStartDate:
+                  prev.schoolYearStartDate ||
+                  getDefaultSchoolYearStartDate(firstFile.fileInfo.schoolYear || prev.schoolYear),
               }));
               fileSpecificInfoSet = true;
             }
@@ -1643,6 +1700,8 @@ const formatPolishedName = (name: string): string => {
                     Barangay: barangay,
                     Municipality: String(row[20] || '').toUpperCase(),
                     Province: String(row[22] || '').toUpperCase(),
+                    FatherName: formatPolishedName(String(row[27] || '')),
+                    MotherName: formatPolishedName(String(row[31] || '')),
                   });
                 }
                 
@@ -2195,7 +2254,34 @@ const formatPolishedName = (name: string): string => {
 
 
   const handleSharedInfoChange = (field: keyof SharedInfo, value: string) => {
-    setSharedInfo(prevInfo => ({ ...prevInfo, [field]: value }));
+    setSharedInfo(prevInfo => {
+      if (field === 'schoolYear') {
+        return {
+          ...prevInfo,
+          schoolYear: value,
+          schoolYearStartDate: getDefaultSchoolYearStartDate(value),
+        };
+      }
+      return { ...prevInfo, [field]: value };
+    });
+  };
+
+  const handleStudentInfoChange = (
+    fileId: string,
+    lrn: string,
+    field: 'Municipality' | 'FatherName' | 'MotherName',
+    value: string
+  ) => {
+    setFilesData(prev => prev.map(fileData =>
+      fileData.id === fileId
+        ? {
+            ...fileData,
+            studentData: fileData.studentData.map(student =>
+              student.LRN === lrn ? { ...student, [field]: value } : student
+            ),
+          }
+        : fileData
+    ));
   };
 
   const handleFileInfoChange = (fileId: string, field: keyof FileInfo, value: string) => {
@@ -2293,6 +2379,7 @@ const formatPolishedName = (name: string): string => {
   }
 
   const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
+  const hasKindergartenFiles = filesData.some(file => file.fileInfo.gradeLevel === 'Kinder');
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
   const availableTokens = tokenWallet?.tokens || 0;
   const allowableStudentForms = calculateAllowableStudentForms(availableTokens);
@@ -2308,7 +2395,8 @@ const formatPolishedName = (name: string): string => {
     !sharedInfo.region ||
     !sharedInfo.division ||
     !sharedInfo.district ||
-    !sharedInfo.schoolYear;
+    !sharedInfo.schoolYear ||
+    (hasKindergartenFiles && !sharedInfo.schoolYearStartDate);
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
   const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected;
@@ -3326,6 +3414,7 @@ const formatPolishedName = (name: string): string => {
 
                     <Accordion type="multiple" value={openAccordions} onValueChange={setOpenAccordions} className="w-full">
                         {filesData.map((fileData) => {
+                            const isKindergarten = fileData.fileInfo.gradeLevel === 'Kinder';
                             const filteredStudents = fileData.studentData.filter(
                                 d =>
                                   d.Name.toLowerCase().includes(fileData.searchTerm.toLowerCase()) ||
@@ -3363,7 +3452,7 @@ const formatPolishedName = (name: string): string => {
                                            {fileData.selectedRows.size === filteredStudents.length ? 'Deselect All' : 'Select All'} ({filteredStudents.length})
                                         </Button>
                                     </div>
-                                    <div className="relative rounded-lg border max-h-[50vh] overflow-y-auto">
+                                    <div className="relative rounded-lg border max-h-[50vh] overflow-auto">
                                       <ShadTable>
                                         <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
                                           <TableRow>
@@ -3380,6 +3469,13 @@ const formatPolishedName = (name: string): string => {
                                             <TableHead>Name</TableHead>
                                             <TableHead className="text-center">Sex</TableHead>
                                             <TableHead className="text-center">Birthdate</TableHead>
+                                            {isKindergarten && (
+                                              <>
+                                                <TableHead className="min-w-[170px]">Municipality</TableHead>
+                                                <TableHead className="min-w-[220px]">Father&apos;s Name</TableHead>
+                                                <TableHead className="min-w-[220px]">Mother&apos;s Name</TableHead>
+                                              </>
+                                            )}
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -3403,11 +3499,24 @@ const formatPolishedName = (name: string): string => {
                                                 </TableCell>
                                                 <TableCell className="text-center">{student.Sex}</TableCell>
                                                 <TableCell className="text-center">{student.Birthdate}</TableCell>
+                                                {isKindergarten && (
+                                                  <>
+                                                    <TableCell onClick={(event) => event.stopPropagation()}>
+                                                      <Input value={student.Municipality} placeholder="Municipality" onChange={(event) => handleStudentInfoChange(fileData.id, student.LRN, 'Municipality', event.target.value.toUpperCase())} aria-label={`Municipality for ${student.Name}`} />
+                                                    </TableCell>
+                                                    <TableCell onClick={(event) => event.stopPropagation()}>
+                                                      <Input value={student.FatherName || ''} placeholder="Father's name" onChange={(event) => handleStudentInfoChange(fileData.id, student.LRN, 'FatherName', event.target.value.toUpperCase())} aria-label={`Father's name for ${student.Name}`} />
+                                                    </TableCell>
+                                                    <TableCell onClick={(event) => event.stopPropagation()}>
+                                                      <Input value={student.MotherName || ''} placeholder="Mother's name" onChange={(event) => handleStudentInfoChange(fileData.id, student.LRN, 'MotherName', event.target.value.toUpperCase())} aria-label={`Mother's name for ${student.Name}`} />
+                                                    </TableCell>
+                                                  </>
+                                                )}
                                               </TableRow>
                                             ))
                                           ) : (
                                             <TableRow>
-                                              <TableCell colSpan={6} className="h-24 text-center">
+                                              <TableCell colSpan={isKindergarten ? 8 : 5} className="h-24 text-center">
                                                 No results found for &quot;{fileData.searchTerm}&quot;.
                                               </TableCell>
                                             </TableRow>
@@ -3672,6 +3781,30 @@ const formatPolishedName = (name: string): string => {
                                 <p className="text-[11px] text-muted-foreground font-medium">Format: <span className="font-semibold text-foreground">YYYY-YYYY</span> (e.g. 2025-2026)</p>
                                 <HistoryBadges items={previousInfo.schoolYear} onSelect={(value) => handleSharedInfoChange('schoolYear', value)} />
                               </div>
+
+                              {hasKindergartenFiles && (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Label htmlFor="schoolYearStartDate">School Year Start Date</Label>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="max-w-xs">
+                                        <p className="text-xs">Kindergarten BOSY age is calculated on this date. EOSY age is calculated exactly 10 calendar months later.</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                  <Input
+                                    id="schoolYearStartDate"
+                                    type="date"
+                                    value={sharedInfo.schoolYearStartDate}
+                                    onChange={(event) => handleSharedInfoChange('schoolYearStartDate', event.target.value)}
+                                    className={cn(!sharedInfo.schoolYearStartDate && 'border-destructive')}
+                                  />
+                                  <p className="text-[11px] text-muted-foreground font-medium">Suggested from the selected school year; SY 2026-2027 uses June 8, 2026. Adjust it when necessary.</p>
+                                </div>
+                              )}
                               
                               <div className="md:col-span-2 space-y-1.5">
                                 <Label>School Logo</Label>
@@ -3906,8 +4039,3 @@ const formatPolishedName = (name: string): string => {
     </TooltipProvider>
   );
 }
-
-
-
-
-
