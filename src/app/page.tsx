@@ -326,6 +326,23 @@ async function buildSf9DocxBlob({
 
     const templateBlob = await response.arrayBuffer();
     const zip = new PizZip(templateBlob);
+
+    // The KPRC template's opening loop is inside a table while its closing
+    // tag is at document-body level. Move the opening marker to body level.
+    if (decodeURIComponent(templateUrl).toLowerCase().includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase())) {
+        const documentXmlFile = zip.file('word/document.xml');
+        const documentXml = documentXmlFile?.asText();
+        if (documentXml?.includes('{#students}')) {
+            const repairedXml = documentXml
+                .replace('{#students}', '')
+                .replace(
+                    /(<w:body[^>]*>)/,
+                    '$1<w:p><w:r><w:t>{#students}</w:t></w:r></w:p>'
+                );
+            zip.file('word/document.xml', repairedXml);
+        }
+    }
+
     const imageModule = new ImageModule({
         centered: false,
         getImage: (tag: string) => {
