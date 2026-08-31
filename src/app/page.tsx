@@ -340,10 +340,13 @@ async function buildSf9DocxBlob({
 
     const templateBlob = await response.arrayBuffer();
     const zip = new PizZip(templateBlob);
+    const isKinderCoverTemplate = decodeURIComponent(templateUrl)
+        .toLowerCase()
+        .includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase());
 
     // The KPRC template's opening loop is inside a table while its closing
     // tag is at document-body level. Move the opening marker to body level.
-    if (decodeURIComponent(templateUrl).toLowerCase().includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase())) {
+    if (isKinderCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
         if (documentXml) {
@@ -366,7 +369,7 @@ async function buildSf9DocxBlob({
             }
             return null;
         },
-        getSize: () => [54, 54],
+        getSize: () => isKinderCoverTemplate ? [86, 86] : [54, 54],
     });
 
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
