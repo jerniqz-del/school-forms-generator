@@ -976,6 +976,25 @@ export default function Home() {
     }
     return null;
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const savedState = loadStateFromLocalStorage();
+    const paidTokens = loadPaidGenerationTokens();
+    const checkoutSessionId = localStorage.getItem('checkoutSessionId');
+
+    if (
+      savedState &&
+      checkoutSessionId &&
+      paidTokens?.status === 'paid' &&
+      paidTokens.checkoutSessionId === checkoutSessionId &&
+      paidTokens.remainingTokens > 0
+    ) {
+      setPaymentRecoveryError('Your confirmed payment is saved. Retry generation without paying again.');
+      setIsPaymentRecoveryOpen(true);
+    }
+  }, [loadPaidGenerationTokens, loadStateFromLocalStorage]);
   
 const formatNameWithMiddleInitial = (name: string): string => {
     const SUFFIX_LIST = ["JR.", "SR.", "III", "II", "IV", "V", "JR", "SR"];
