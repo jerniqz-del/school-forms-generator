@@ -304,6 +304,20 @@ const sanitizeFileNamePart = (value: string, fallback: string): string => {
     return sanitized || fallback;
 };
 
+const getGenerationErrorMessage = (error: any): string => {
+    const nestedErrors = error?.properties?.errors;
+    if (Array.isArray(nestedErrors) && nestedErrors.length > 0) {
+        return nestedErrors
+            .map((nestedError: any) =>
+                nestedError?.properties?.explanation || nestedError?.message
+            )
+            .filter(Boolean)
+            .join(' ');
+    }
+
+    return error?.message || 'An unexpected error occurred.';
+};
+
 async function buildSf9DocxBlob({
     templateUrl,
     fileData,
@@ -332,9 +346,10 @@ async function buildSf9DocxBlob({
     if (decodeURIComponent(templateUrl).toLowerCase().includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase())) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
-        if (documentXml?.includes('{#students}')) {
+        if (documentXml) {
             const repairedXml = documentXml
                 .replace('{#students}', '')
+                .replace(/\{#(?:<[^>]+>)*students\}/, '')
                 .replace(
                     /(<w:body[^>]*>)/,
                     '$1<w:p><w:r><w:t>{#students}</w:t></w:r></w:p>'
@@ -1195,7 +1210,7 @@ const handleGenerateSF9 = useCallback(async (
 
     } catch (error: any) {
         console.error("Error generating SF9:", error);
-        const message = error.message || "An unexpected error occurred.";
+        const message = getGenerationErrorMessage(error);
         if (options?.showPaymentRecovery) {
             setPaymentRecoveryError(message);
             setIsPaymentRecoveryOpen(true);
