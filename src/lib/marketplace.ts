@@ -37,6 +37,18 @@ export function isAllowedZipContentType(contentType: string | undefined) {
   return normalized === 'application/zip' || normalized === 'application/x-zip-compressed';
 }
 
+export function resolveZipContentType(contentType: string | undefined, fileName: string) {
+  if (isAllowedZipContentType(contentType)) {
+    return contentType!.toLowerCase() === 'application/x-zip-compressed'
+      ? 'application/x-zip-compressed'
+      : 'application/zip';
+  }
+  if (fileName.toLowerCase().endsWith('.zip') && (!contentType || contentType === 'application/octet-stream')) {
+    return 'application/zip';
+  }
+  return null;
+}
+
 export function isAllowedCoverContentType(contentType: string | undefined) {
   if (!contentType) return false;
   return ['image/jpeg', 'image/png', 'image/webp'].includes(contentType.toLowerCase());

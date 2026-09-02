@@ -44,7 +44,10 @@ export function AdminMarketplaceProducts({
       if (!res.ok) throw new Error(data?.error || 'Unable to load products');
       setProducts(data.products || []);
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Error', description: e.message || String(e) });
+      const message = e.message === 'Failed to fetch'
+        ? 'Could not reach the marketplace API. Refresh and try again.'
+        : (e.message || String(e));
+      toast({ variant: 'destructive', title: 'Error', description: message });
     } finally {
       setLoading(false);
     }
@@ -53,6 +56,45 @@ export function AdminMarketplaceProducts({
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  async function uploadProductAsset({
+    productId,
+    signedUrl,
+    contentType,
+    file,
+    fieldName,
+    fallbackLabel,
+  }: {
+    productId: string;
+    signedUrl: string;
+    contentType: string;
+    file: File;
+    fieldName: 'zip' | 'cover';
+    fallbackLabel: string;
+  }) {
+    try {
+      const directUpload = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: file,
+      });
+      if (directUpload.ok) return;
+    } catch {
+      // Browser PUT to Storage often fails with CORS ("Failed to fetch"). Fall back to the API.
+    }
+
+    const formData = new FormData();
+    formData.set(fieldName, file);
+    const proxyRes = await fetch(`/api/marketplace/admin/products/${productId}/assets`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: formData,
+    });
+    const proxyData = await proxyRes.json().catch(() => null);
+    if (!proxyRes.ok) {
+      throw new Error(proxyData?.error || `Unable to upload ${fallbackLabel}.`);
+    }
+  }
 
   async function handlePublish(event: FormEvent) {
     event.preventDefault();
@@ -83,20 +125,24 @@ export function AdminMarketplaceProducts({
       const created = await createRes.json();
       if (!createRes.ok) throw new Error(created?.error || 'Unable to create product');
 
-      const zipUpload = await fetch(created.zipUploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': created.zipContentType },
-        body: zipFile,
+      await uploadProductAsset({
+        productId: created.productId,
+        signedUrl: created.zipUploadUrl,
+        contentType: created.zipContentType,
+        file: zipFile,
+        fieldName: 'zip',
+        fallbackLabel: 'zip file',
       });
-      if (!zipUpload.ok) throw new Error('Unable to upload zip file to storage.');
 
       if (coverFile && created.coverUploadUrl && created.coverContentType) {
-        const coverUpload = await fetch(created.coverUploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': created.coverContentType },
-          body: coverFile,
+        await uploadProductAsset({
+          productId: created.productId,
+          signedUrl: created.coverUploadUrl,
+          contentType: created.coverContentType,
+          file: coverFile,
+          fieldName: 'cover',
+          fallbackLabel: 'cover image',
         });
-        if (!coverUpload.ok) throw new Error('Unable to upload cover image to storage.');
       }
 
       const publishRes = await fetch(`/api/marketplace/admin/products/${created.productId}/publish`, {

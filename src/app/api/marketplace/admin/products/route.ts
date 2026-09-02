@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminFieldValue, getAdminFirestore, getAdminStorage, isSuperAdminToken, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
+import { ensureMarketplaceStorageCors, getAdminFieldValue, getAdminFirestore, isSuperAdminToken, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
 import {
   coverExtensionForContentType,
   isAllowedCoverContentType,
-  isAllowedZipContentType,
   marketplaceCoverPath,
   marketplaceZipPath,
   MARKETPLACE_MAX_ZIP_BYTES,
   MARKETPLACE_UPLOAD_URL_TTL_MS,
+  resolveZipContentType,
   sanitizeZipFileName,
 } from '@/lib/marketplace';
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     const db = await getAdminFirestore();
-    const snapshot = await db.collection('products').orderBy('createdAt', 'desc').get();
+    const snapshot = await db.collection('products').get();
     const products = snapshot.docs.map(docSnap => {
       const data = docSnap.data();
       return {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         status: data.status || 'draft',
         createdBy: data.createdBy || null,
       };
-    });
+    }).sort((a, b) => a.title.localeCompare(b.title));
 
     return NextResponse.json({ products });
   } catch (error: any) {
@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const tokenPrice = Number(body.tokenPrice);
     const fileName = typeof body.fileName === 'string' ? sanitizeZipFileName(body.fileName) : 'product.zip';
-    const zipContentType = typeof body.contentType === 'string' ? body.contentType : 'application/zip';
+    const requestedZipType = typeof body.contentType === 'string' ? body.contentType : '';
+    const zipContentType = resolveZipContentType(requestedZipType, fileName);
     const fileSize = Number(body.fileSize);
     const coverContentType = typeof body.coverContentType === 'string' ? body.coverContentType : undefined;
 
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(tokenPrice) || tokenPrice < 0 || !Number.isInteger(tokenPrice)) {
       return NextResponse.json({ error: 'Token price must be a whole number of 0 or more.' }, { status: 400 });
     }
-    if (!isAllowedZipContentType(zipContentType)) {
+    if (!zipContentType) {
       return NextResponse.json({ error: 'Only zip files are allowed.' }, { status: 400 });
     }
     if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MARKETPLACE_MAX_ZIP_BYTES) {
@@ -100,30 +101,7 @@ export async function POST(request: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    const bucket = await getAdminStorage();
-    const requestOrigin = request.headers.get('origin');
-    if (requestOrigin) {
-      try {
-        const [metadata] = await bucket.getMetadata();
-        const existing = Array.isArray(metadata.cors) ? metadata.cors : [];
-        const alreadyAllowed = existing.some((rule: any) =>
-          Array.isArray(rule.origin) && (rule.origin.includes(requestOrigin) || rule.origin.includes('*'))
-        );
-        if (!alreadyAllowed) {
-          await bucket.setCorsConfiguration([
-            ...existing,
-            {
-              origin: [requestOrigin],
-              method: ['GET', 'PUT', 'HEAD', 'OPTIONS'],
-              responseHeader: ['Content-Type', 'Content-Disposition'],
-              maxAgeSeconds: 3600,
-            },
-          ]);
-        }
-      } catch (corsError) {
-        console.warn('Unable to update Storage CORS automatically.', corsError);
-      }
-    }
+    const bucket = await ensureMarketplaceStorageCors(request.headers.get('origin'));
     const expires = Date.now() + MARKETPLACE_UPLOAD_URL_TTL_MS;
     const [zipUploadUrl] = await bucket.file(storagePath).getSignedUrl({
       version: 'v4',

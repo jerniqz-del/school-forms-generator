@@ -68,19 +68,95 @@ async function initAdminApp() {
   });
 }
 
+let resolvedBucketName: string | null = null;
+
 export function getFirebaseStorageBucket() {
+  if (resolvedBucketName) return resolvedBucketName;
   if (process.env.FIREBASE_STORAGE_BUCKET) {
     return process.env.FIREBASE_STORAGE_BUCKET;
   }
   const projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfigData.projectId;
-  return `${projectId}.firebasestorage.app`;
+  return `${projectId}.appspot.com`;
+}
+
+function storageBucketCandidates() {
+  const projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfigData.projectId;
+  return [...new Set([
+    process.env.FIREBASE_STORAGE_BUCKET,
+    `${projectId}.appspot.com`,
+    `${projectId}.firebasestorage.app`,
+  ].filter((name): name is string => Boolean(name)))];
 }
 
 export async function getAdminStorage() {
   adminAppPromise ??= initAdminApp();
   await adminAppPromise;
   const { getStorage } = await import('firebase-admin/storage');
-  return getStorage().bucket(getFirebaseStorageBucket());
+  const storage = getStorage();
+
+  if (resolvedBucketName) {
+    return storage.bucket(resolvedBucketName);
+  }
+
+  const candidates = storageBucketCandidates();
+  for (const name of candidates) {
+    const bucket = storage.bucket(name);
+    try {
+      const [exists] = await bucket.exists();
+      if (exists) {
+        resolvedBucketName = name;
+        return bucket;
+      }
+    } catch {
+      // Try the next default Firebase bucket name.
+    }
+  }
+
+  const createName = candidates[0];
+  const bucket = storage.bucket(createName);
+  try {
+    await bucket.create({ location: 'US' });
+    resolvedBucketName = createName;
+    return bucket;
+  } catch (error: any) {
+    throw new Error(
+      `Firebase Storage is not available. Open Firebase Console > Storage and create the default bucket, then set FIREBASE_STORAGE_BUCKET in Vercel. ${error?.message || ''}`.trim()
+    );
+  }
+}
+
+export async function ensureMarketplaceStorageCors(origin?: string | null) {
+  const bucket = await getAdminStorage();
+  const allowedOrigins = [...new Set([
+    origin,
+    'https://sfgen2.vercel.app',
+    'http://localhost:3000',
+  ].filter((value): value is string => Boolean(value)))];
+
+  try {
+    const [metadata] = await bucket.getMetadata();
+    const existing = Array.isArray(metadata.cors) ? metadata.cors : [];
+    const hasRequiredOrigins = allowedOrigins.every(allowed =>
+      existing.some((rule: any) => Array.isArray(rule.origin) && (rule.origin.includes(allowed) || rule.origin.includes('*')))
+    );
+    const hasPut = existing.some((rule: any) => Array.isArray(rule.method) && rule.method.includes('PUT'));
+    if (hasRequiredOrigins && hasPut) {
+      return bucket;
+    }
+
+    await bucket.setCorsConfiguration([
+      {
+        origin: allowedOrigins,
+        method: ['GET', 'PUT', 'HEAD', 'OPTIONS'],
+        responseHeader: ['Content-Type', 'Content-Disposition', 'x-goog-resumable'],
+        maxAgeSeconds: 3600,
+      },
+    ]);
+  } catch (corsError) {
+    console.warn('Unable to update Storage CORS automatically.', corsError);
+  }
+
+  return bucket;
 }
 
 export async function getAdminFirestore() {
