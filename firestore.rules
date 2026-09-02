@@ -191,5 +191,21 @@ service cloud.firestore {
       allow update: if isSuperAdmin();
       allow delete: if isSuperAdmin();
     }
+
+    /**
+     * Marketplace catalog. Published products are readable; writes go through Admin SDK.
+     */
+    match /products/{productId} {
+      allow get, list: if resource.data.status == 'published';
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * Marketplace purchases. Owners can read their own records; writes go through Admin SDK.
+     */
+    match /purchases/{purchaseId} {
+      allow get, list: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create, update, delete: if false;
+    }
   }
 }

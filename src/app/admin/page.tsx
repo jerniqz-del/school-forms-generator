@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+import { AdminMarketplaceProducts } from '@/components/marketplace/admin-marketplace-products';
 
 function AdminPage() {
   const [history, setHistory] = useState<any[]>([]);
@@ -99,6 +100,8 @@ function AdminPage() {
           <Button variant="outline" asChild><Link href="/">Close dashboard</Link></Button>
         </CardHeader>
         <CardContent>
+          <AdminMarketplaceProducts user={user} getAuthHeaders={getAuthHeaders} />
+
           <form onSubmit={handleAddTokens} className="flex gap-2 mb-4">
             <Input placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} />
             <Input type="number" value={tokens} onChange={e => setTokens(Number(e.target.value))} className="w-32" />
