@@ -40,11 +40,13 @@ async function initAdminApp() {
     return getApps()[0];
   }
 
+  const storageBucket = getFirebaseStorageBucket();
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccountJson) {
     const normalizedServiceAccount = serviceAccountJson.trim();
     return initializeApp({
       credential: cert(JSON.parse(normalizedServiceAccount)),
+      storageBucket,
     });
   }
 
@@ -62,7 +64,23 @@ async function initAdminApp() {
       clientEmail,
       privateKey,
     }),
+    storageBucket,
   });
+}
+
+export function getFirebaseStorageBucket() {
+  if (process.env.FIREBASE_STORAGE_BUCKET) {
+    return process.env.FIREBASE_STORAGE_BUCKET;
+  }
+  const projectId = process.env.FIREBASE_PROJECT_ID || firebaseConfigData.projectId;
+  return `${projectId}.firebasestorage.app`;
+}
+
+export async function getAdminStorage() {
+  adminAppPromise ??= initAdminApp();
+  await adminAppPromise;
+  const { getStorage } = await import('firebase-admin/storage');
+  return getStorage().bucket(getFirebaseStorageBucket());
 }
 
 export async function getAdminFirestore() {

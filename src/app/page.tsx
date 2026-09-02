@@ -13,6 +13,7 @@ import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
 import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, Store } from 'lucide-react';
+import { MarketplaceSection } from '@/components/marketplace/marketplace-section';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -3338,20 +3339,14 @@ const formatPolishedName = (name: string): string => {
             )}
 
             {activeWorkspaceSection === 'marketplace' && (
-              <section className="rounded-3xl border bg-card p-6 shadow-lg shadow-primary/5 sm:p-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <Badge variant="outline" className="mb-3">Marketplace</Badge>
-                    <h2 className="text-3xl font-bold tracking-normal">Teaching materials marketplace</h2>
-                    <p className="mt-2 max-w-2xl text-muted-foreground">
-                      A dedicated space for teaching templates, classroom resources, and digital materials. Your token wallet remains connected while this section grows.
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => setActiveWorkspaceSection('generator')}>
-                    Use Generator
-                  </Button>
-                </div>
-              </section>
+              <MarketplaceSection
+                isSignedIn={!!authUser}
+                availableTokens={availableTokens}
+                getAuthHeaders={getAuthHeaders}
+                onSignIn={signInWithGoogle}
+                onReloadTokens={() => setIsTokenReloadOpen(true)}
+                onPurchaseComplete={() => { refreshTokenWallet().catch(() => null); }}
+              />
             )}
 
             <div className={cn('max-w-5xl mx-auto w-full space-y-8', activeWorkspaceSection === 'generator' ? 'block' : 'hidden')}>
