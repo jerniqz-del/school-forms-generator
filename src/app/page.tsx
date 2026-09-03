@@ -489,10 +489,18 @@ const masterTemplateOrder = [
   'Grade Four.docx',
   'Grade Five.docx',
   'Grade Six.docx',
+  'Grade Seven.docx',
   'Grade Seven (Year 1).docx',
+  'Grade Seven (Year I).docx',
+  'Grade Eight.docx',
   'Grade Eight (Year 2).docx',
+  'Grade Eight (Year II).docx',
+  'Grade Nine.docx',
   'Grade Nine (Year 3).docx',
+  'Grade Nine (Year III).docx',
+  'Grade Ten.docx',
   'Grade Ten (Year 4).docx',
+  'Grade Ten (Year IV).docx',
   'Grade Eleven.docx',
   'Grade Twelve.docx',
 ];
@@ -505,16 +513,27 @@ const gradeToTemplateMap: { [key: string]: string } = {
   'Four': 'Grade Four.docx',
   'Five': 'Grade Five.docx',
   'Six': 'Grade Six.docx',
-  'Seven': 'Grade Seven (Year 1).docx',
-  'Seven (Year I)': 'Grade Seven (Year 1).docx',
-  'Eight': 'Grade Eight (Year 2).docx',
-  'Eight (Year II)': 'Grade Eight (Year 2).docx',
-  'Nine': 'Grade Nine (Year 3).docx',
-  'Nine (Year III)': 'Grade Nine (Year 3).docx',
-  'Ten': 'Grade Ten (Year 4).docx',
-  'Ten (Year IV)': 'Grade Ten (Year 4).docx',
+  'Seven': 'Grade Seven.docx',
+  'Seven (Year I)': 'Grade Seven.docx',
+  'Eight': 'Grade Eight.docx',
+  'Eight (Year II)': 'Grade Eight.docx',
+  'Nine': 'Grade Nine.docx',
+  'Nine (Year III)': 'Grade Nine.docx',
+  'Ten': 'Grade Ten.docx',
+  'Ten (Year IV)': 'Grade Ten.docx',
   'Eleven': 'Grade Eleven.docx',
   'Twelve': 'Grade Twelve.docx',
+};
+
+const gradeTemplateFallbacks: { [key: string]: string[] } = {
+  'Seven': ['Grade Seven (Year I).docx', 'Grade Seven (Year 1).docx'],
+  'Seven (Year I)': ['Grade Seven (Year I).docx', 'Grade Seven (Year 1).docx'],
+  'Eight': ['Grade Eight (Year II).docx', 'Grade Eight (Year 2).docx'],
+  'Eight (Year II)': ['Grade Eight (Year II).docx', 'Grade Eight (Year 2).docx'],
+  'Nine': ['Grade Nine (Year III).docx', 'Grade Nine (Year 3).docx'],
+  'Nine (Year III)': ['Grade Nine (Year III).docx', 'Grade Nine (Year 3).docx'],
+  'Ten': ['Grade Ten (Year IV).docx', 'Grade Ten (Year 4).docx'],
+  'Ten (Year IV)': ['Grade Ten (Year IV).docx', 'Grade Ten (Year 4).docx'],
 };
 
 function normalizeSf1GradeLevel(rawGrade: string) {
@@ -1547,13 +1566,14 @@ const handleGenerateSF9 = useCallback(async (
       processedFiles.forEach(fileData => {
           const gradeLevel = fileData.fileInfo.gradeLevel;
           if (!newSelectedUrls[gradeLevel]) {
-              const templateNameToFind = gradeToTemplateMap[gradeLevel];
-              if (templateNameToFind) {
-                  const matchedTemplate = templates.find(t => t.name === templateNameToFind);
-                  if (matchedTemplate) {
-                      newSelectedUrls[gradeLevel] = matchedTemplate.download_url;
-                      updated = true;
-                  }
+              const namesToTry = [
+                gradeToTemplateMap[gradeLevel],
+                ...(gradeTemplateFallbacks[gradeLevel] || []),
+              ].filter(Boolean);
+              const matchedTemplate = templates.find(t => namesToTry.includes(t.name));
+              if (matchedTemplate) {
+                  newSelectedUrls[gradeLevel] = matchedTemplate.download_url;
+                  updated = true;
               }
           }
       });
