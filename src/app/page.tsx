@@ -506,12 +506,81 @@ const gradeToTemplateMap: { [key: string]: string } = {
   'Five': 'Grade Five.docx',
   'Six': 'Grade Six.docx',
   'Seven': 'Grade Seven (Year 1).docx',
+  'Seven (Year I)': 'Grade Seven (Year 1).docx',
   'Eight': 'Grade Eight (Year 2).docx',
+  'Eight (Year II)': 'Grade Eight (Year 2).docx',
   'Nine': 'Grade Nine (Year 3).docx',
+  'Nine (Year III)': 'Grade Nine (Year 3).docx',
   'Ten': 'Grade Ten (Year 4).docx',
+  'Ten (Year IV)': 'Grade Ten (Year 4).docx',
   'Eleven': 'Grade Eleven.docx',
   'Twelve': 'Grade Twelve.docx',
 };
+
+function normalizeSf1GradeLevel(rawGrade: string) {
+  const gradeValue = String(rawGrade || '').replace(/Grade\s+/i, '').trim();
+  if (!gradeValue) return 'Kinder';
+
+  const gradeMap: { [key: string]: string } = {
+    '1': 'One',
+    '2': 'Two',
+    '3': 'Three',
+    '4': 'Four',
+    '5': 'Five',
+    '6': 'Six',
+    '7': 'Seven (Year I)',
+    '8': 'Eight (Year II)',
+    '9': 'Nine (Year III)',
+    '10': 'Ten (Year IV)',
+    '11': 'Eleven',
+    '12': 'Twelve',
+    VII: 'Seven (Year I)',
+    VIII: 'Eight (Year II)',
+    IX: 'Nine (Year III)',
+    X: 'Ten (Year IV)',
+    XI: 'Eleven',
+    XII: 'Twelve',
+  };
+
+  if (gradeMap[gradeValue] || gradeMap[gradeValue.toUpperCase()]) {
+    return gradeMap[gradeValue] || gradeMap[gradeValue.toUpperCase()];
+  }
+
+  const numericMatch = gradeValue.match(/\b(12|11|10|[1-9])\b/);
+  if (numericMatch && gradeMap[numericMatch[1]]) {
+    return gradeMap[numericMatch[1]];
+  }
+
+  const romanMatch = gradeValue.toUpperCase().match(/\b(XII|XI|VIII|VII|IX|X|VI|V|IV|III|II|I)\b/);
+  if (romanMatch && gradeMap[romanMatch[1]]) {
+    return gradeMap[romanMatch[1]];
+  }
+
+  const wordMatch = gradeValue.toLowerCase().match(
+    /\b(kindergarten|kinder|twelve|eleven|seven|eight|nine|three|four|five|six|one|two|ten)\b/
+  );
+  const wordMap: { [key: string]: string } = {
+    kindergarten: 'Kinder',
+    kinder: 'Kinder',
+    one: 'One',
+    two: 'Two',
+    three: 'Three',
+    four: 'Four',
+    five: 'Five',
+    six: 'Six',
+    seven: 'Seven (Year I)',
+    eight: 'Eight (Year II)',
+    nine: 'Nine (Year III)',
+    ten: 'Ten (Year IV)',
+    eleven: 'Eleven',
+    twelve: 'Twelve',
+  };
+  if (wordMatch && wordMap[wordMatch[1]]) {
+    return wordMap[wordMatch[1]];
+  }
+
+  return gradeValue;
+}
 
 const paperSizeRepos: { [key: string]: RepoConfig | null } = {
     'A4': null,
@@ -1687,23 +1756,7 @@ const formatPolishedName = (name: string): string => {
                     }`
                   : '';
                 
-                let gradeLevel = '';
-                const gradeValue = String(getCellValue(3, 30)).replace(/Grade /i, '').trim();
-
-                if (!gradeValue) {
-                  gradeLevel = 'Kinder';
-                } else {
-                    gradeLevel = gradeValue;
-                }
-                
-                const gradeMap: { [key: string]: string } = {
-                  '1': 'One', '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five', '6': 'Six',
-                  '7': 'Seven', '8': 'Eight', '9': 'Nine', '10': 'Ten', '11': 'Eleven', '12': 'Twelve'
-                };
-
-                if (gradeMap[gradeLevel]) {
-                  gradeLevel = gradeMap[gradeLevel];
-                }
+                const gradeLevel = normalizeSf1GradeLevel(String(getCellValue(3, 30)));
 
                 let adviser = '';
                 for (let i = 0; i < json.length; i++) {
