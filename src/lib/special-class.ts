@@ -2,7 +2,7 @@ export const SPECIAL_CLASS_GRADES = ['Four', 'Five', 'Six'] as const;
 export type SpecialClassGrade = (typeof SPECIAL_CLASS_GRADES)[number];
 
 export const SPECIAL_SUBJECT_OPTIONS = [
-  'Journalism (Pamamahayag)',
+  'Journalism',
   'Research',
   'Math Oriented',
   'Science Oriented',
