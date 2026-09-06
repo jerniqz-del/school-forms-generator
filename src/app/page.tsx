@@ -76,6 +76,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
 import {
+  getSpecialSubjectValue,
+  getTemplateGradeKey,
+  isSpecialClassGrade,
+  isSpecialClassSelectionIncomplete,
+  SPECIAL_SUBJECT_OPTIONS,
+  SPECIAL_TEMPLATE_FILE_NAMES,
+} from '@/lib/special-class';
+import {
   REFERRAL_REWARD_TOKENS,
   TOKEN_RELOAD_MIN_PESOS,
   TOKENS_PER_STUDENT_FORM,
@@ -112,6 +120,8 @@ type FileInfo = {
     address: string;
     municipality?: string;
     schoolYear?: string;
+    isSpecialClass?: boolean;
+    specialSubject?: string;
 };
 
 type SharedInfo = {
@@ -384,6 +394,7 @@ async function buildSf9DocxBlob({
             return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
         })
         .join(' ');
+    const specialsubject = getSpecialSubjectValue(fileData.fileInfo);
 
     const selectedStudents = fileData.studentData.filter(d => fileData.selectedRows.has(d.LRN));
     const studentsForRender = previewOnly ? selectedStudents.slice(0, 1) : selectedStudents;
@@ -404,6 +415,7 @@ async function buildSf9DocxBlob({
         MotherName: useMiddleInitial
             ? formatNameWithMiddleInitialForDocx(student.MotherName || '')
             : student.MotherName || '',
+        specialsubject,
     }));
 
     if (!previewOnly) {
@@ -421,6 +433,7 @@ async function buildSf9DocxBlob({
             ...buildKindergartenTemplateFields('', '', ageReferenceDate),
             gradeLevel: fileData.fileInfo.gradeLevel,
             section: formattedSection,
+            specialsubject,
         };
         const lastStudentNumber = exportData.length;
         exportData.unshift(
@@ -433,6 +446,7 @@ async function buildSf9DocxBlob({
         ...fileData.fileInfo,
         ...sharedInfo,
         section: formattedSection,
+        specialsubject,
         students: exportData,
         logo: croppedLogo ? 'logo' : undefined,
     };
@@ -487,8 +501,11 @@ const masterTemplateOrder = [
   'Grade Two.docx',
   'Grade Three.docx',
   'Grade Four.docx',
+  'Grade Four - Special.docx',
   'Grade Five.docx',
+  'Grade Five - Special.docx',
   'Grade Six.docx',
+  'Grade Six - Special.docx',
   'Grade Seven.docx',
   'Grade Seven (Year 1).docx',
   'Grade Seven (Year I).docx',
@@ -511,8 +528,11 @@ const gradeToTemplateMap: { [key: string]: string } = {
   'Two': 'Grade Two.docx',
   'Three': 'Grade Three.docx',
   'Four': 'Grade Four.docx',
+  'Four - Special': 'Grade Four - Special.docx',
   'Five': 'Grade Five.docx',
+  'Five - Special': 'Grade Five - Special.docx',
   'Six': 'Grade Six.docx',
+  'Six - Special': 'Grade Six - Special.docx',
   'Seven': 'Grade Seven.docx',
   'Seven (Year I)': 'Grade Seven.docx',
   'Eight': 'Grade Eight.docx',
@@ -526,6 +546,9 @@ const gradeToTemplateMap: { [key: string]: string } = {
 };
 
 const gradeTemplateFallbacks: { [key: string]: string[] } = {
+  'Four - Special': ['Grade Four Special.docx', 'Grade Four-Special.docx'],
+  'Five - Special': ['Grade Five Special.docx', 'Grade Five-Special.docx'],
+  'Six - Special': ['Grade Six Special.docx', 'Grade Six-Special.docx'],
   'Seven': ['Grade Seven (Year I).docx', 'Grade Seven (Year 1).docx'],
   'Seven (Year I)': ['Grade Seven (Year I).docx', 'Grade Seven (Year 1).docx'],
   'Eight': ['Grade Eight (Year II).docx', 'Grade Eight (Year 2).docx'],
@@ -985,11 +1008,11 @@ export default function Home() {
 
     // Update with file-specific info
     filesData.forEach(fileData => {
-            ['school', 'district', 'municipality', 'address'].forEach(key => {
-            const value = fileData.fileInfo[key as keyof FileInfo];
-            const history = newPreviousInfo[key as keyof PreviousInfo] as string[];
+            (['school', 'district', 'municipality', 'address'] as const).forEach(key => {
+            const value = fileData.fileInfo[key];
+            const history = newPreviousInfo[key] as string[];
             if (value && !history.includes(value)) {
-                (newPreviousInfo[key as keyof PreviousInfo] as string[]) = [value, ...history].slice(0, MAX_PREVIOUS_INFO);
+                (newPreviousInfo[key] as string[]) = [value, ...history].slice(0, MAX_PREVIOUS_INFO);
                 hasChanged = true;
             }
         });
@@ -1197,9 +1220,10 @@ const handleGenerateSF9 = useCallback(async (
         };
 
         for (const [index, fileData] of filesToGenerate.entries()) {
-            const templateUrl = currentTemplateUrls[fileData.fileInfo.gradeLevel];
+            const templateKey = getTemplateGradeKey(fileData.fileInfo);
+            const templateUrl = currentTemplateUrls[templateKey];
             if (!templateUrl) {
-                throw new Error(`No template selected for ${fileData.fileInfo.gradeLevel}.`);
+                throw new Error(`No template selected for ${templateKey}.`);
             }
 
             setLoadingMessage(
@@ -1534,10 +1558,18 @@ const handleGenerateSF9 = useCallback(async (
         
         const files: TemplateFile[] = await response.json();
         const docxFiles = files.filter(file => file.name.endsWith('.docx'));
+        const extraSpecialTemplates = docxFiles.filter(file =>
+          SPECIAL_TEMPLATE_FILE_NAMES.includes(file.name) ||
+          /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name)
+        );
 
-        const availableMasterFiles = masterTemplateOrder.map(masterName => {
-          return docxFiles.find(file => file.name === masterName);
-        }).filter((file): file is TemplateFile => !!file);
+        const availableMasterFiles = [
+          ...masterTemplateOrder.map(masterName => docxFiles.find(file => file.name === masterName)),
+          ...extraSpecialTemplates,
+        ].filter((file, index, all): file is TemplateFile => {
+          if (!file) return false;
+          return all.findIndex(candidate => candidate?.name === file.name) === index;
+        });
         
         setTemplates(availableMasterFiles);
       } catch (error: any) {
@@ -1564,13 +1596,15 @@ const handleGenerateSF9 = useCallback(async (
       let updated = false;
 
       processedFiles.forEach(fileData => {
-          const gradeLevel = fileData.fileInfo.gradeLevel;
+          const gradeLevel = getTemplateGradeKey(fileData.fileInfo);
           if (!newSelectedUrls[gradeLevel]) {
               const namesToTry = [
                 gradeToTemplateMap[gradeLevel],
                 ...(gradeTemplateFallbacks[gradeLevel] || []),
               ].filter(Boolean);
-              const matchedTemplate = templates.find(t => namesToTry.includes(t.name));
+              const matchedTemplate = templates.find(t =>
+                namesToTry.some(name => name.toLowerCase() === t.name.toLowerCase())
+              );
               if (matchedTemplate) {
                   newSelectedUrls[gradeLevel] = matchedTemplate.download_url;
                   updated = true;
@@ -1579,7 +1613,12 @@ const handleGenerateSF9 = useCallback(async (
       });
 
       if (updated) {
-          setSelectedTemplateUrls(prev => ({ ...prev, ...newSelectedUrls }));
+          setSelectedTemplateUrls(prev => {
+              const hasChanges = Object.keys(newSelectedUrls).some(
+                (gradeLevel) => prev[gradeLevel] !== newSelectedUrls[gradeLevel]
+              );
+              return hasChanges ? { ...prev, ...newSelectedUrls } : prev;
+          });
       }
   }, [templates]);
 
@@ -1947,6 +1986,8 @@ const formatPolishedName = (name: string): string => {
                         region: parsedRegion,
                         address: toProperCase(mostCommonMunicipality),
                         schoolYear: parsedSchoolYear,
+                        isSpecialClass: false,
+                        specialSubject: '',
                     },
 
                     selectedRows: new Set(extractedData.map(s => s.LRN)),
@@ -1981,7 +2022,7 @@ const formatPolishedName = (name: string): string => {
       toast({
         variant: 'destructive',
         title: 'Missing Information',
-        description: 'Please select a template for each grade level, and fill all required shared info fields.',
+        description: 'Please select a template for each grade level, fill all required shared info fields, and choose a special subject for any special class.',
       });
       setIsPurchaseConfirmationOpen(false);
       return;
@@ -2412,9 +2453,34 @@ const formatPolishedName = (name: string): string => {
     ));
   };
 
-  const handleFileInfoChange = (fileId: string, field: keyof FileInfo, value: string) => {
+  const handleFileInfoChange = (fileId: string, field: 'adviser' | 'section' | 'gradeLevel', value: string) => {
       setFilesData(prev => prev.map(fileData => 
           fileData.id === fileId ? { ...fileData, fileInfo: { ...fileData.fileInfo, [field]: value } } : fileData
+      ));
+  };
+
+  const handleSpecialClassChange = (fileId: string, isSpecialClass: boolean) => {
+      const nextFilesData = filesData.map(fileData =>
+          fileData.id === fileId
+              ? {
+                  ...fileData,
+                  fileInfo: {
+                    ...fileData.fileInfo,
+                    isSpecialClass,
+                    specialSubject: isSpecialClass ? fileData.fileInfo.specialSubject || '' : '',
+                  },
+                }
+              : fileData
+      );
+      setFilesData(nextFilesData);
+      autoSelectTemplates(nextFilesData);
+  };
+
+  const handleSpecialSubjectChange = (fileId: string, specialSubject: string) => {
+      setFilesData(prev => prev.map(fileData =>
+          fileData.id === fileId
+              ? { ...fileData, fileInfo: { ...fileData.fileInfo, specialSubject } }
+              : fileData
       ));
   };
 
@@ -2506,9 +2572,10 @@ const formatPolishedName = (name: string): string => {
     }
   }
 
-  const uniqueGradeLevels = [...new Set(filesData.map(f => f.fileInfo.gradeLevel))];
+  const uniqueGradeLevels = [...new Set(filesData.map(f => getTemplateGradeKey(f.fileInfo)))];
   const hasKindergartenFiles = filesData.some(file => file.fileInfo.gradeLevel === 'Kinder');
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
+  const hasIncompleteSpecialClass = filesData.some(file => isSpecialClassSelectionIncomplete(file.fileInfo));
   const availableTokens = tokenWallet?.tokens || 0;
   const allowableStudentForms = calculateAllowableStudentForms(availableTokens);
   const generationStudentLimit = isPromoApplied ? totalSelectedStudents : Math.min(totalSelectedStudents, allowableStudentForms);
@@ -2527,7 +2594,7 @@ const formatPolishedName = (name: string): string => {
     (hasKindergartenFiles && !sharedInfo.schoolYearStartDate);
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
-  const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected;
+  const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected || hasIncompleteSpecialClass;
   const currentStepLabel = step === 1 ? 'Upload SF1 files' : step === 2 ? 'Select learners' : 'Finalize and generate';
   const hasGeneratorDraft = pendingFiles.length > 0 || filesData.length > 0 || totalSelectedStudents > 0;
   const latestTokenHistory = tokenHistory.slice(0, 3);
@@ -2805,6 +2872,20 @@ const formatPolishedName = (name: string): string => {
                     return <SummaryItem key={grade} label={`Grade ${grade}`} value={value} />
                   })}
                 </div>
+                {filesData.some(file => file.fileInfo.isSpecialClass && isSpecialClassGrade(file.fileInfo.gradeLevel)) && (
+                  <div className="pt-4">
+                    <h4 className="font-semibold text-foreground mb-2">Special Classes</h4>
+                    {filesData
+                      .filter(file => file.fileInfo.isSpecialClass && isSpecialClassGrade(file.fileInfo.gradeLevel))
+                      .map(file => (
+                        <SummaryItem
+                          key={file.id}
+                          label={`${file.fileInfo.gradeLevel} - ${file.fileInfo.section}`}
+                          value={file.fileInfo.specialSubject || 'Subject not selected'}
+                        />
+                      ))}
+                  </div>
+                )}
               </dl>
             </ScrollArea>
             <AlertDialogFooter>
@@ -3537,6 +3618,7 @@ const formatPolishedName = (name: string): string => {
                     <Accordion type="multiple" value={openAccordions} onValueChange={setOpenAccordions} className="w-full">
                         {filesData.map((fileData) => {
                             const isKindergarten = fileData.fileInfo.gradeLevel === 'Kinder';
+                            const canMarkSpecialClass = isSpecialClassGrade(fileData.fileInfo.gradeLevel);
                             const filteredStudents = fileData.studentData.filter(
                                 d =>
                                   d.Name.toLowerCase().includes(fileData.searchTerm.toLowerCase()) ||
@@ -3551,7 +3633,16 @@ const formatPolishedName = (name: string): string => {
                                             <FileCheck className="size-5 text-green-600" />
                                             <div>
                                                 <p className="font-semibold text-left">{fileData.fileName}</p>
-                                                <p className="text-xs text-muted-foreground text-left">{fileData.fileInfo.gradeLevel} - {fileData.fileInfo.section} &bull; {fileData.selectedRows.size} / {fileData.studentData.length} selected</p>
+                                                <p className="text-xs text-muted-foreground text-left">
+                                                  {fileData.fileInfo.gradeLevel} - {fileData.fileInfo.section}
+                                                  {fileData.fileInfo.isSpecialClass && canMarkSpecialClass && fileData.fileInfo.specialSubject
+                                                    ? ` • Special: ${fileData.fileInfo.specialSubject}`
+                                                    : fileData.fileInfo.isSpecialClass && canMarkSpecialClass
+                                                      ? ' • Special class'
+                                                      : ''}
+                                                  {' '}
+                                                  &bull; {fileData.selectedRows.size} / {fileData.studentData.length} selected
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -3567,6 +3658,40 @@ const formatPolishedName = (name: string): string => {
                                                 className="pl-10"
                                             />
                                         </div>
+                                        {canMarkSpecialClass && (
+                                          <div className="flex flex-wrap items-center gap-3">
+                                            <div className="flex items-center space-x-2">
+                                              <Checkbox
+                                                id={`special-class-${fileData.id}`}
+                                                checked={!!fileData.fileInfo.isSpecialClass}
+                                                onCheckedChange={(checked) => handleSpecialClassChange(fileData.id, checked === true)}
+                                              />
+                                              <Label htmlFor={`special-class-${fileData.id}`} className="text-sm font-medium cursor-pointer">
+                                                Special class
+                                              </Label>
+                                            </div>
+                                            {fileData.fileInfo.isSpecialClass && (
+                                              <Select
+                                                value={fileData.fileInfo.specialSubject || ''}
+                                                onValueChange={(value) => handleSpecialSubjectChange(fileData.id, value)}
+                                              >
+                                                <SelectTrigger
+                                                  className={cn("w-[240px] bg-background", !fileData.fileInfo.specialSubject && "border-destructive")}
+                                                  aria-label={`Special subject for ${fileData.fileName}`}
+                                                >
+                                                  <SelectValue placeholder="Select special subject" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {SPECIAL_SUBJECT_OPTIONS.map((option) => (
+                                                    <SelectItem key={option} value={option}>
+                                                      {option}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            )}
+                                          </div>
+                                        )}
                                         <Button 
                                             variant="outline"
                                             onClick={() => handleSelectAll(fileData.id, filteredStudents)}
@@ -3653,9 +3778,16 @@ const formatPolishedName = (name: string): string => {
 
                     <div className="sticky bottom-4 z-20 mt-6 flex items-center justify-between rounded-2xl border bg-card/95 p-3 shadow-lg shadow-primary/10 backdrop-blur">
                         <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-                        <Button onClick={() => setStep(3)} disabled={totalSelectedStudents === 0}>
-                            Continue ({totalSelectedStudents}) <ChevronRight className="ml-2 size-4" />
-                        </Button>
+                        <div className="flex items-center gap-3">
+                            {hasIncompleteSpecialClass && (
+                              <p className="hidden sm:block text-xs text-destructive">
+                                Choose a special subject for each special class.
+                              </p>
+                            )}
+                            <Button onClick={() => setStep(3)} disabled={totalSelectedStudents === 0 || hasIncompleteSpecialClass}>
+                                Continue ({totalSelectedStudents}) <ChevronRight className="ml-2 size-4" />
+                            </Button>
+                        </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -3684,7 +3816,7 @@ const formatPolishedName = (name: string): string => {
                     <CardContent className="space-y-8 pt-6">
                        <div>
                           <h3 className="text-lg font-medium mb-3">Per-section Information</h3>
-                          <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser&apos;s name if needed.</p>
+                          <p className="text-sm text-muted-foreground mb-3">This information is specific to each file and was extracted automatically. You can edit the adviser&apos;s name if needed. Grades 4-6 can also be marked as a special class.</p>
                           <div className="border rounded-lg overflow-hidden">
                             <ShadTable>
                                 <TableHeader>
@@ -3705,6 +3837,8 @@ const formatPolishedName = (name: string): string => {
                                               </Tooltip>
                                             </div>
                                         </TableHead>
+                                        <TableHead className="text-center">Special Class</TableHead>
+                                        <TableHead>Special Subject</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -3715,6 +3849,43 @@ const formatPolishedName = (name: string): string => {
                                         <TableCell className="text-center font-medium">{file.fileInfo.section}</TableCell>
                                         <TableCell>
                                             <Input value={file.fileInfo.adviser} placeholder="e.g. Juan D. Cruz" onChange={(e) => handleFileInfoChange(file.id, 'adviser', e.target.value)} />
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            {isSpecialClassGrade(file.fileInfo.gradeLevel) ? (
+                                              <div className="flex items-center justify-center">
+                                                <Checkbox
+                                                  id={`special-class-step3-${file.id}`}
+                                                  checked={!!file.fileInfo.isSpecialClass}
+                                                  onCheckedChange={(checked) => handleSpecialClassChange(file.id, checked === true)}
+                                                  aria-label={`Mark ${file.fileName} as a special class`}
+                                                />
+                                              </div>
+                                            ) : (
+                                              <span className="text-muted-foreground">—</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {isSpecialClassGrade(file.fileInfo.gradeLevel) && file.fileInfo.isSpecialClass ? (
+                                              <Select
+                                                value={file.fileInfo.specialSubject || ''}
+                                                onValueChange={(value) => handleSpecialSubjectChange(file.id, value)}
+                                              >
+                                                <SelectTrigger
+                                                  className={cn("w-[220px] bg-background", !file.fileInfo.specialSubject && "border-destructive")}
+                                                >
+                                                  <SelectValue placeholder="Select special subject" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {SPECIAL_SUBJECT_OPTIONS.map((option) => (
+                                                    <SelectItem key={option} value={option}>
+                                                      {option}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            ) : (
+                                              <span className="text-muted-foreground">—</span>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                     ))}
@@ -4050,7 +4221,7 @@ const formatPolishedName = (name: string): string => {
                                     {uniqueGradeLevels.map(gradeLevel => {
                                         const selectedUrl = selectedTemplateUrls[gradeLevel];
                                         const selectedTemplate = templates.find(t => t.download_url === selectedUrl);
-                                        const previewFile = filesData.find(f => f.fileInfo.gradeLevel === gradeLevel);
+                                        const previewFile = filesData.find(f => getTemplateGradeKey(f.fileInfo) === gradeLevel);
                                         const sampleStudent = previewFile?.studentData.find(student => previewFile.selectedRows.has(student.LRN)) || null;
                                         return (
                                             <div key={gradeLevel} className="flex flex-col md:flex-row gap-6 justify-between items-center border p-4 rounded-xl bg-card hover:shadow-sm transition-shadow">

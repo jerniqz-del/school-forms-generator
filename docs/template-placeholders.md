@@ -8,6 +8,12 @@ Templates are rendered with Docxtemplater. Learner fields must be placed inside 
 {/students}
 ```
 
+## Special class (Grades 4-6)
+
+After SF1 extraction, Grade 4, 5, and 6 classes can be marked as a special class. When that option is selected, generation uses the matching special template, such as `Grade Four - Special.docx`, and fills:
+
+- `{specialsubject}` — `Journalism (Pamamahayag)`, `Research`, `Math Oriented`, or `Science Oriented`
+
 ## Shared and section fields
 
 - `{school}`
@@ -22,6 +28,7 @@ Templates are rendered with Docxtemplater. Learner fields must be placed inside 
 - `{gradeLevel}`
 - `{section}`
 - `{adviser}`
+- `{specialsubject}`
 - `{%logo}`
 
 ## Learner fields
