@@ -75,6 +75,17 @@ import { useUser as useAuthUser } from '@/firebase/auth/use-user';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
+import { APP_VERSION_LABEL } from '@/lib/app-version';
+import {
+  formatGradeTemplateLabel,
+  isSpedCoverTemplate,
+  isSpedGrade,
+  looksLikeSpedSf1,
+  SPED_CONTENT_PDF_NAME,
+  SPED_CONTENT_PDF_URL,
+  SPED_COVER_TEMPLATE_FALLBACKS,
+  SPED_COVER_TEMPLATE_NAME,
+} from '@/lib/sped-class';
 import {
   getSpecialSubjectValue,
   getTemplateGradeKey,
@@ -354,13 +365,14 @@ async function buildSf9DocxBlob({
     const isKinderCoverTemplate = decodeURIComponent(templateUrl)
         .toLowerCase()
         .includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase());
+    const spedCoverTemplate = isSpedCoverTemplate(templateUrl);
 
     // The KPRC template's opening loop is inside a table while its closing
     // tag is at document-body level. Move the opening marker to body level.
-    if (isKinderCoverTemplate) {
+    if (isKinderCoverTemplate || spedCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
-        if (documentXml) {
+        if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
             const repairedXml = documentXml
                 .replace('{#students}', '')
                 .replace(/\{#(?:<[^>]+>)*students\}/, '')
@@ -380,7 +392,11 @@ async function buildSf9DocxBlob({
             }
             return null;
         },
-        getSize: () => isKinderCoverTemplate ? [86, 86] : [54, 54],
+        getSize: () => {
+            if (isKinderCoverTemplate) return [86, 86];
+            if (spedCoverTemplate) return [71, 71];
+            return [54, 54];
+        },
     });
 
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, modules: [imageModule] });
@@ -497,6 +513,8 @@ const masterTemplateOrder = [
   KINDER_COVER_TEMPLATE_NAME,
   'Kinder Report Card.docx',
   'Kinder PECD.docx',
+  SPED_COVER_TEMPLATE_NAME,
+  ...SPED_COVER_TEMPLATE_FALLBACKS,
   'Grade One.docx',
   'Grade Two.docx',
   'Grade Three.docx',
@@ -524,6 +542,7 @@ const masterTemplateOrder = [
 
 const gradeToTemplateMap: { [key: string]: string } = {
   'Kinder': KINDER_COVER_TEMPLATE_NAME,
+  'SPED': SPED_COVER_TEMPLATE_NAME,
   'One': 'Grade One.docx',
   'Two': 'Grade Two.docx',
   'Three': 'Grade Three.docx',
@@ -546,6 +565,7 @@ const gradeToTemplateMap: { [key: string]: string } = {
 };
 
 const gradeTemplateFallbacks: { [key: string]: string[] } = {
+  'SPED': SPED_COVER_TEMPLATE_FALLBACKS,
   'Four - Special': ['Grade Four Special.docx', 'Grade Four-Special.docx'],
   'Five - Special': ['Grade Five Special.docx', 'Grade Five-Special.docx'],
   'Six - Special': ['Grade Six Special.docx', 'Grade Six-Special.docx'],
@@ -559,7 +579,14 @@ const gradeTemplateFallbacks: { [key: string]: string[] } = {
   'Ten (Year IV)': ['Grade Ten (Year IV).docx', 'Grade Ten (Year 4).docx'],
 };
 
-function normalizeSf1GradeLevel(rawGrade: string) {
+function normalizeSf1GradeLevel(
+  rawGrade: string,
+  extras?: { section?: string; fileName?: string; headerText?: string }
+) {
+  if (looksLikeSpedSf1(rawGrade, extras?.section, extras?.fileName, extras?.headerText)) {
+    return 'SPED';
+  }
+
   const gradeValue = String(rawGrade || '').replace(/Grade\s+/i, '').trim();
   if (!gradeValue) return 'Kinder';
 
@@ -678,7 +705,7 @@ const TemplateStatusCard = ({ gradeLevel, templateName, selectedCount, sampleStu
     <div className="flex h-[240px] w-[180px] flex-col justify-between rounded-lg border bg-background p-3 shadow-sm">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Badge variant="outline" className="text-[10px]">Grade {gradeLevel}</Badge>
+          <Badge variant="outline" className="text-[10px]">{gradeLevel === 'SPED' || gradeLevel === 'Kinder' ? gradeLevel : `Grade ${gradeLevel}`}</Badge>
           <FileText className="size-4 text-muted-foreground" />
         </div>
         <div>
@@ -1218,6 +1245,21 @@ const handleGenerateSF9 = useCallback(async (
             }
             return kinderContentPdfPromise;
         };
+        let spedContentPdfPromise: Promise<Blob> | null = null;
+        const getSpedContentPdf = () => {
+            if (!spedContentPdfPromise) {
+                spedContentPdfPromise = (async () => {
+                    const response = await fetch(
+                        `/api/download-template?url=${encodeURIComponent(SPED_CONTENT_PDF_URL)}`
+                    );
+                    if (!response.ok) {
+                        throw new Error(`Failed to download ${SPED_CONTENT_PDF_NAME}: ${response.statusText}`);
+                    }
+                    return response.blob();
+                })();
+            }
+            return spedContentPdfPromise;
+        };
 
         for (const [index, fileData] of filesToGenerate.entries()) {
             const templateKey = getTemplateGradeKey(fileData.fileInfo);
@@ -1273,6 +1315,15 @@ const handleGenerateSF9 = useCallback(async (
                 const contentPdf = await getKinderContentPdf();
                 generatedFiles.push({
                     name: `${docxName.replace(/\.docx$/i, '')}_${KINDER_CONTENT_PDF_NAME}`,
+                    blob: contentPdf,
+                });
+            }
+
+            if (isSpedCoverTemplate(templateUrl)) {
+                setLoadingMessage(`Adding SPED content pages ${index + 1} of ${filesToGenerate.length}...`);
+                const contentPdf = await getSpedContentPdf();
+                generatedFiles.push({
+                    name: `${docxName.replace(/\.docx$/i, '')}_${SPED_CONTENT_PDF_NAME}`,
                     blob: contentPdf,
                 });
             }
@@ -1560,7 +1611,8 @@ const handleGenerateSF9 = useCallback(async (
         const docxFiles = files.filter(file => file.name.endsWith('.docx'));
         const extraSpecialTemplates = docxFiles.filter(file =>
           SPECIAL_TEMPLATE_FILE_NAMES.includes(file.name) ||
-          /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name)
+          /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name) ||
+          isSpedCoverTemplate(file.name)
         );
 
         const availableMasterFiles = [
@@ -1815,7 +1867,14 @@ const formatPolishedName = (name: string): string => {
                     }`
                   : '';
                 
-                const gradeLevel = normalizeSf1GradeLevel(String(getCellValue(3, 30)));
+                const headerText = json.slice(0, 6).map((row) => (row || []).join(' ')).join(' ');
+                const rawGrade = String(getCellValue(3, 30));
+                const rawSection = String(getCellValue(3, 38));
+                const gradeLevel = normalizeSf1GradeLevel(rawGrade, {
+                    section: rawSection,
+                    fileName: file.name,
+                    headerText,
+                });
 
                 let adviser = '';
                 for (let i = 0; i < json.length; i++) {
@@ -1977,7 +2036,7 @@ const formatPolishedName = (name: string): string => {
                     studentData: extractedData,
                     fileInfo: {
                         gradeLevel: gradeLevel,
-                        section: toProperCase(String(getCellValue(3, 38))),
+                        section: toProperCase(rawSection),
                         adviser: adviser,
                         school: parsedSchool,
                         district: parsedDistrict,
@@ -2574,6 +2633,7 @@ const formatPolishedName = (name: string): string => {
 
   const uniqueGradeLevels = [...new Set(filesData.map(f => getTemplateGradeKey(f.fileInfo)))];
   const hasKindergartenFiles = filesData.some(file => file.fileInfo.gradeLevel === 'Kinder');
+  const hasSpedFiles = filesData.some(file => isSpedGrade(file.fileInfo.gradeLevel));
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
   const hasIncompleteSpecialClass = filesData.some(file => isSpecialClassSelectionIncomplete(file.fileInfo));
   const availableTokens = tokenWallet?.tokens || 0;
@@ -2591,7 +2651,8 @@ const formatPolishedName = (name: string): string => {
     !sharedInfo.division ||
     !sharedInfo.district ||
     !sharedInfo.schoolYear ||
-    (hasKindergartenFiles && !sharedInfo.schoolYearStartDate);
+    (hasKindergartenFiles && !sharedInfo.schoolYearStartDate) ||
+    (hasSpedFiles && !sharedInfo.schoolYearStartDate);
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
   const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected || hasIncompleteSpecialClass;
@@ -2869,7 +2930,7 @@ const formatPolishedName = (name: string): string => {
                     ) : (
                       <span className="text-destructive font-medium">Not Selected</span>
                     );
-                    return <SummaryItem key={grade} label={`Grade ${grade}`} value={value} />
+                    return <SummaryItem key={grade} label={formatGradeTemplateLabel(grade).replace(/ Template$/, '')} value={value} />
                   })}
                 </div>
                 {filesData.some(file => file.fileInfo.isSpecialClass && isSpecialClassGrade(file.fileInfo.gradeLevel)) && (
@@ -3262,7 +3323,10 @@ const formatPolishedName = (name: string): string => {
                     <Store className="size-5" />
                   </span>
                   <div>
-                    <p className="text-lg font-bold leading-tight">TeachTiangge</p>
+                    <p className="flex items-center gap-2 text-lg font-bold leading-tight">
+                      TeachTiangge
+                      <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">{APP_VERSION_LABEL}</span>
+                    </p>
                     <p className="text-xs leading-snug text-primary-foreground/80">Your go to digital store for teaching related materials.</p>
                   </div>
                 </div>
@@ -3618,6 +3682,7 @@ const formatPolishedName = (name: string): string => {
                     <Accordion type="multiple" value={openAccordions} onValueChange={setOpenAccordions} className="w-full">
                         {filesData.map((fileData) => {
                             const isKindergarten = fileData.fileInfo.gradeLevel === 'Kinder';
+                            const isSpedClass = isSpedGrade(fileData.fileInfo.gradeLevel);
                             const canMarkSpecialClass = isSpecialClassGrade(fileData.fileInfo.gradeLevel);
                             const filteredStudents = fileData.studentData.filter(
                                 d =>
@@ -3699,6 +3764,11 @@ const formatPolishedName = (name: string): string => {
                                            {fileData.selectedRows.size === filteredStudents.length ? 'Deselect All' : 'Select All'} ({filteredStudents.length})
                                         </Button>
                                     </div>
+                                    {isSpedClass && (
+                                      <p className="mb-4 text-xs text-muted-foreground">
+                                        This SF1 was detected as a SPED class. The SPED PRC cover is selected by default in the next step; switch to a regular grade template for inclusivized learners.
+                                      </p>
+                                    )}
                                     <div className="relative rounded-lg border max-h-[50vh] overflow-auto">
                                       <ShadTable>
                                         <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
@@ -4075,7 +4145,7 @@ const formatPolishedName = (name: string): string => {
                                 <HistoryBadges items={previousInfo.schoolYear} onSelect={(value) => handleSharedInfoChange('schoolYear', value)} />
                               </div>
 
-                              {hasKindergartenFiles && (
+                              {(hasKindergartenFiles || hasSpedFiles) && (
                                 <div className="space-y-1.5">
                                   <div className="flex items-center gap-1.5">
                                     <Label htmlFor="schoolYearStartDate">School Year Start Date</Label>
@@ -4084,7 +4154,7 @@ const formatPolishedName = (name: string): string => {
                                         <HelpCircle className="size-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                                       </TooltipTrigger>
                                       <TooltipContent side="top" className="max-w-xs">
-                                        <p className="text-xs">Kindergarten BOSY age is calculated on this date. EOSY age is calculated exactly 10 calendar months later.</p>
+                                        <p className="text-xs">BOSY age is calculated on this date. EOSY age is calculated exactly 10 calendar months later.</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </div>
@@ -4228,9 +4298,13 @@ const formatPolishedName = (name: string): string => {
                                                 <div className="flex-1 space-y-3 flex flex-col justify-center w-full">
                                                     <div className="flex items-center space-x-2">
                                                         <FileIcon className="size-5 text-primary" />
-                                                        <Label className="font-bold text-base text-foreground">Grade {gradeLevel} Template</Label>
+                                                        <Label className="font-bold text-base text-foreground">{formatGradeTemplateLabel(gradeLevel)}</Label>
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground">Select the official Word (.docx) template layout for Grade {gradeLevel}.</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                      {isSpedGrade(gradeLevel)
+                                                        ? 'SPED PRC Cover is selected by default. Choose a regular grade template instead for inclusivized learners. Generating with the SPED cover also includes SPED PRC - Content.pdf.'
+                                                        : `Select the official Word (.docx) template layout for Grade ${gradeLevel}.`}
+                                                    </p>
                                                     
                                                     <Select
                                                         value={selectedUrl || ''}
