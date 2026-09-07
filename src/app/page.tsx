@@ -3367,38 +3367,6 @@ const formatPolishedName = (name: string): string => {
                   );
                 })}
               </nav>
-
-              {authUser && (
-                <div className="mt-auto rounded-2xl border bg-background/80 p-4 shadow-sm">
-                  <TokenWalletBreakdown wallet={tokenWallet} />
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Button size="sm" onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
-                    <Button size="sm" variant="outline" onClick={handleOpenTokenHistory}>History</Button>
-                    <Button size="sm" variant="outline" onClick={() => setIsTokenShareOpen(true)}>Share</Button>
-                  </div>
-                  {tokenWallet?.referralCode && (
-                    <div className="mt-2 grid grid-cols-1 gap-2">
-                      <Button size="sm" variant="ghost" className="justify-start px-2 text-xs" onClick={handleOpenReferralRewards}>
-                        <Gift className="size-3.5" />
-                        Referral rewards
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="justify-start px-2 text-xs"
-                        onClick={() => {
-                          const url = `${window.location.origin}/?ref=${tokenWallet.referralCode}`;
-                          navigator.clipboard?.writeText(url);
-                          toast({ variant: 'success', title: 'Referral Link Copied', description: 'Share it with another teacher to earn reward tokens after their first reload.' });
-                        }}
-                      >
-                        <Share2 className="size-3.5" />
-                        Copy referral link
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </aside>
 
