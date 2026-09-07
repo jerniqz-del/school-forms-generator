@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
-import { REFERRAL_REWARD_TOKENS, TOKEN_RELOAD_MIN_PESOS } from '@/lib/tokens';
+import { REFERRAL_REWARD_TOKENS, TOKEN_RELOAD_MIN_PESOS, creditFreeTokens, creditShareableTokens } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,22 +71,33 @@ export async function POST(request: NextRequest) {
         !referralInvite?.referrerRewardGranted &&
         Number(fresh.amountPesos || 0) >= TOKEN_RELOAD_MIN_PESOS;
 
+      const buyerWalletRef = db.collection('tokenWallets').doc(uid);
+      const buyerWalletSnap = await transaction.get(buyerWalletRef);
+      const referrerWalletRef = shouldRewardReferrer
+        ? db.collection('tokenWallets').doc(referralInvite.referrerUid)
+        : null;
+      const referrerWalletSnap = referrerWalletRef ? await transaction.get(referrerWalletRef) : null;
+      const nextBuyerBalances = creditShareableTokens(buyerWalletSnap.data(), Number(fresh.totalTokens || 0));
       transaction.set(
-        db.collection('tokenWallets').doc(uid),
+        buyerWalletRef,
         {
-          tokens: FieldValue.increment(fresh.totalTokens),
-          shareableTokens: FieldValue.increment(fresh.totalTokens),
+          tokens: nextBuyerBalances.tokens,
+          freeTokens: nextBuyerBalances.freeTokens,
+          shareableTokens: nextBuyerBalances.shareableTokens,
           lifetimePurchasedTokens: FieldValue.increment(fresh.totalTokens),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
-      if (shouldRewardReferrer) {
+      if (shouldRewardReferrer && referrerWalletRef) {
         referralRewardTokens = Number(referralInvite.referrerRewardTokens || REFERRAL_REWARD_TOKENS);
+        const nextReferrerBalances = creditFreeTokens(referrerWalletSnap?.data(), referralRewardTokens);
         transaction.set(
-          db.collection('tokenWallets').doc(referralInvite.referrerUid),
+          referrerWalletRef,
           {
-            tokens: FieldValue.increment(referralRewardTokens),
+            tokens: nextReferrerBalances.tokens,
+            freeTokens: nextReferrerBalances.freeTokens,
+            shareableTokens: nextReferrerBalances.shareableTokens,
             lifetimeReferralRewards: FieldValue.increment(referralRewardTokens),
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -105,6 +116,8 @@ export async function POST(request: NextRequest) {
           uid: referralInvite.referrerUid,
           type: 'referral_reward',
           tokens: referralRewardTokens,
+          bronzeTokens: referralRewardTokens,
+          goldTokens: 0,
           referredUid: uid,
           checkoutSessionId,
           createdAt: FieldValue.serverTimestamp(),
@@ -128,6 +141,8 @@ export async function POST(request: NextRequest) {
         type: 'reload',
         checkoutSessionId,
         tokens: fresh.totalTokens,
+        bronzeTokens: 0,
+        goldTokens: fresh.totalTokens,
         amountPesos: fresh.amountPesos,
         createdAt: FieldValue.serverTimestamp(),
       });

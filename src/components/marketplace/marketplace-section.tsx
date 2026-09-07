@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { TokenBalanceChips, TokenSpendPreview } from '@/components/token-wallet-display';
 
 type MarketplaceProduct = {
   id: string;
@@ -24,6 +25,8 @@ function formatFileSize(bytes: number | null) {
 export function MarketplaceSection({
   isSignedIn,
   availableTokens,
+  freeTokens,
+  shareableTokens,
   getAuthHeaders,
   onSignIn,
   onReloadTokens,
@@ -31,6 +34,8 @@ export function MarketplaceSection({
 }: {
   isSignedIn: boolean;
   availableTokens: number;
+  freeTokens: number;
+  shareableTokens: number;
   getAuthHeaders: () => Promise<{ Authorization: string }>;
   onSignIn: () => void;
   onReloadTokens: () => void;
@@ -41,6 +46,7 @@ export function MarketplaceSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyProductId, setBusyProductId] = useState<string | null>(null);
+  const wallet = { tokens: availableTokens, freeTokens, shareableTokens };
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -120,14 +126,20 @@ export function MarketplaceSection({
 
   return (
     <section className="rounded-3xl border bg-card p-6 shadow-lg shadow-primary/5 sm:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <Badge variant="outline" className="mb-3">Marketplace</Badge>
           <h2 className="text-3xl font-bold tracking-normal">Teaching materials marketplace</h2>
           <p className="mt-2 max-w-2xl text-muted-foreground">
-            Buy classroom resources with your token wallet. Paid packs stay in your account so you can download them again.
+            Buy classroom resources with your token wallet. Checkout uses bronze free and reward tokens first, then gold reload tokens. Paid packs stay in your account so you can download them again.
           </p>
         </div>
+        {isSignedIn && (
+          <div className="rounded-2xl border bg-muted/40 p-3">
+            <p className="mb-2 text-xs text-muted-foreground">Wallet for checkout</p>
+            <TokenBalanceChips wallet={wallet} />
+          </div>
+        )}
       </div>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
@@ -158,6 +170,11 @@ export function MarketplaceSection({
               <CardContent className="space-y-3">
                 {product.description && (
                   <p className="text-sm text-muted-foreground">{product.description}</p>
+                )}
+                {isSignedIn && !owned && product.tokenPrice > 0 && (
+                  <div className="rounded-lg border bg-muted/40 p-3">
+                    <TokenSpendPreview wallet={wallet} cost={product.tokenPrice} />
+                  </div>
                 )}
                 <Button className="w-full" onClick={() => handleBuyOrDownload(product)} disabled={busy}>
                   {busy

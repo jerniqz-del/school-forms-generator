@@ -28,10 +28,13 @@ import {
 import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
+import { TokenBalanceChips, TokenWalletBreakdown } from "@/components/token-wallet-display";
 import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Store } from "lucide-react";
 
 type AppHeaderProps = {
     availableTokens?: number | null;
+    freeTokens?: number | null;
+    shareableTokens?: number | null;
     onReloadTokens?: () => void;
     onShareTokens?: () => void;
     onOpenTokenHistory?: () => void;
@@ -40,6 +43,8 @@ type AppHeaderProps = {
 
 export function AppHeader({
     availableTokens,
+    freeTokens = 0,
+    shareableTokens = 0,
     onReloadTokens,
     onShareTokens,
     onOpenTokenHistory,
@@ -152,14 +157,21 @@ export function AppHeader({
                         {user && typeof availableTokens === 'number' && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm" className="rounded-full bg-muted/40 px-3 font-semibold">
-                                        {availableTokens} tokens
+                                    <Button variant="outline" size="sm" className="h-auto rounded-full bg-muted/40 px-2 py-1 font-semibold">
+                                        <TokenBalanceChips
+                                            wallet={{ tokens: availableTokens, freeTokens: freeTokens || 0, shareableTokens: shareableTokens || 0 }}
+                                            compact
+                                            showLabels={false}
+                                        />
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-80 p-3">
                                     <div className="mb-3 px-1">
                                         <p className="text-sm font-semibold">Token Wallet</p>
-                                        <p className="text-xs text-muted-foreground">{availableTokens} token(s) available</p>
+                                        <TokenWalletBreakdown
+                                            className="mt-2"
+                                            wallet={{ tokens: availableTokens, freeTokens: freeTokens || 0, shareableTokens: shareableTokens || 0 }}
+                                        />
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         <Button variant="outline" size="sm" onClick={onReloadTokens} className="flex-1 gap-2">

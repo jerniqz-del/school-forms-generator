@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { getAdminFieldValue, getAdminFirestore, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
-import { FREE_SIGNUP_TOKENS, REFERRAL_REWARD_TOKENS } from '@/lib/tokens';
+import {
+  FREE_SIGNUP_TOKENS,
+  REFERRAL_REWARD_TOKENS,
+  creditFreeTokens,
+  creditShareableTokens,
+  readTokenBalances,
+  tokenBalancesNeedRepair,
+  withNormalizedTokenBalances,
+} from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,14 +38,13 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
 
     if (walletSnap.exists) {
       const wallet = walletSnap.data() || {};
-      const currentTokens = Number(wallet.tokens || 0);
-      const reservedTokens = Number(wallet.reservedTokens || 0);
+      const currentBalances = readTokenBalances(wallet);
       const grantedSignupTokens = Number(wallet.freeSignupTokensGranted || 0);
       const missingSignupTokens = Math.max(0, FREE_SIGNUP_TOKENS - grantedSignupTokens);
       const needsSignupBalanceRepair =
         missingSignupTokens === 0 &&
-        currentTokens < FREE_SIGNUP_TOKENS &&
-        reservedTokens === 0 &&
+        currentBalances.tokens < FREE_SIGNUP_TOKENS &&
+        Number(wallet.reservedTokens || 0) === 0 &&
         !wallet.signupBalanceRepairGranted &&
         Number(wallet.lifetimePurchasedTokens || 0) === 0 &&
         Number(wallet.lifetimeReferralRewards || 0) === 0 &&
@@ -45,16 +52,20 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         Number(wallet.sharedTokensReceived || 0) === 0 &&
         Number(wallet.sharedTokensSent || 0) === 0;
       const signupTokensToGrant = needsSignupBalanceRepair
-        ? FREE_SIGNUP_TOKENS - currentTokens
+        ? FREE_SIGNUP_TOKENS - currentBalances.tokens
         : missingSignupTokens;
+      const nextBalances = signupTokensToGrant > 0
+        ? creditFreeTokens(currentBalances, signupTokensToGrant)
+        : currentBalances;
       const updateData: Record<string, any> = {
         email: normalizedEmail,
-        shareableTokens: Number(wallet.shareableTokens || 0),
+        tokens: nextBalances.tokens,
+        freeTokens: nextBalances.freeTokens,
+        shareableTokens: nextBalances.shareableTokens,
         updatedAt: FieldValue.serverTimestamp(),
       };
 
       if (signupTokensToGrant > 0) {
-        updateData.tokens = FieldValue.increment(signupTokensToGrant);
         updateData.freeSignupTokensGranted = FREE_SIGNUP_TOKENS;
         if (needsSignupBalanceRepair) {
           updateData.signupBalanceRepairGranted = true;
@@ -63,8 +74,14 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
           uid,
           type: 'signup_bonus',
           tokens: signupTokensToGrant,
+          bronzeTokens: signupTokensToGrant,
+          goldTokens: 0,
           createdAt: FieldValue.serverTimestamp(),
         });
+      } else if (!tokenBalancesNeedRepair(wallet)) {
+        delete updateData.tokens;
+        delete updateData.freeTokens;
+        delete updateData.shareableTokens;
       }
 
       if (!wallet.referralCode) {
@@ -119,6 +136,8 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
           uid,
           type: 'referral_signup_bonus',
           tokens: REFERRAL_REWARD_TOKENS,
+          bronzeTokens: REFERRAL_REWARD_TOKENS,
+          goldTokens: 0,
           referrerUid: referredBy,
           createdAt: FieldValue.serverTimestamp(),
         });
@@ -129,6 +148,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       uid,
       email: normalizedEmail,
       tokens,
+      freeTokens: tokens,
       shareableTokens: 0,
       reservedTokens: 0,
       freeSignupTokensGranted: FREE_SIGNUP_TOKENS,
@@ -151,6 +171,8 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         uid,
         type: 'signup_bonus',
         tokens: FREE_SIGNUP_TOKENS,
+        bronzeTokens: FREE_SIGNUP_TOKENS,
+        goldTokens: 0,
         createdAt: FieldValue.serverTimestamp(),
       });
     } else if (hadDeletedAccount) {
@@ -158,6 +180,8 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         uid,
         type: 'signup_bonus_blocked',
         tokens: 0,
+        bronzeTokens: 0,
+        goldTokens: 0,
         reason: 'prior_account_deletion',
         createdAt: FieldValue.serverTimestamp(),
       });
@@ -174,6 +198,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
 
     if (!pendingShares.empty) {
       await db.runTransaction(async transaction => {
+        const walletSnap = await transaction.get(walletRef);
         let totalSharedTokens = 0;
         pendingShares.docs.forEach(docSnap => {
           const share = docSnap.data();
@@ -186,10 +211,13 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         });
 
         if (totalSharedTokens > 0) {
+          const nextBalances = creditShareableTokens(walletSnap.data(), totalSharedTokens);
           transaction.set(
             walletRef,
             {
-              tokens: FieldValue.increment(totalSharedTokens),
+              tokens: nextBalances.tokens,
+              freeTokens: nextBalances.freeTokens,
+              shareableTokens: nextBalances.shareableTokens,
               sharedTokensReceived: FieldValue.increment(totalSharedTokens),
               updatedAt: FieldValue.serverTimestamp(),
             },
@@ -199,6 +227,8 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
             uid,
             type: 'share_received',
             tokens: totalSharedTokens,
+            bronzeTokens: 0,
+            goldTokens: totalSharedTokens,
             createdAt: FieldValue.serverTimestamp(),
           });
         }
@@ -213,7 +243,7 @@ export async function GET(request: NextRequest) {
   try {
     const decoded = await requireDecodedTokenFromRequest(request);
     const walletSnap = await ensureWallet(decoded.uid, decoded.email || null);
-    return NextResponse.json({ wallet: walletSnap.data() });
+    return NextResponse.json({ wallet: withNormalizedTokenBalances(walletSnap.data()) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Unable to load wallet.' }, { status: 500 });
   }
@@ -224,7 +254,7 @@ export async function POST(request: NextRequest) {
     const decoded = await requireDecodedTokenFromRequest(request);
     const { referralCode } = await request.json().catch(() => ({}));
     const walletSnap = await ensureWallet(decoded.uid, decoded.email || null, typeof referralCode === 'string' ? referralCode.trim() : null);
-    return NextResponse.json({ wallet: walletSnap.data() });
+    return NextResponse.json({ wallet: withNormalizedTokenBalances(walletSnap.data()) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Unable to create wallet.' }, { status: 500 });
   }
