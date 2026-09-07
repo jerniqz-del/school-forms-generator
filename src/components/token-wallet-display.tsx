@@ -128,6 +128,12 @@ export function TokenSpendPreview({
         <span>Total used</span>
         <span>{spend.covered}</span>
       </div>
+      {spend.uncovered > 0 && (
+        <div className="flex items-center justify-between text-destructive">
+          <span>Still needed</span>
+          <span>{spend.uncovered}</span>
+        </div>
+      )}
     </div>
   );
 }

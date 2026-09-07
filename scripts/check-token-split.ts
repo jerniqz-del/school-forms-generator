@@ -24,6 +24,9 @@ assert.deepEqual(spendMixed.next, { tokens: 10, freeTokens: 0, shareableTokens: 
 
 assert.throws(() => applyTokenSpend({ tokens: 5, freeTokens: 5, shareableTokens: 0 }, 10), /Insufficient tokens/);
 
+const shortSpend = splitTokenSpend(5, 5, 20);
+assert.deepEqual(shortSpend, { bronzeUsed: 5, goldUsed: 5, covered: 10, uncovered: 10 });
+
 const afterReward = creditFreeTokens(spendMixed.next, 10);
 assert.deepEqual(afterReward, { tokens: 20, freeTokens: 10, shareableTokens: 10 });
 
