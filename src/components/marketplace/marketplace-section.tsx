@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { TokenBalanceChips, TokenSpendPreview } from '@/components/token-wallet-display';
+import { TokenBalanceChips } from '@/components/token-wallet-display';
+import { MarketplaceCartButton, useMarketplaceCart } from '@/components/marketplace/marketplace-cart';
 
 type MarketplaceProduct = {
   id: string;
@@ -29,8 +30,6 @@ export function MarketplaceSection({
   shareableTokens,
   getAuthHeaders,
   onSignIn,
-  onReloadTokens,
-  onPurchaseComplete,
 }: {
   isSignedIn: boolean;
   availableTokens: number;
@@ -38,14 +37,13 @@ export function MarketplaceSection({
   shareableTokens: number;
   getAuthHeaders: () => Promise<{ Authorization: string }>;
   onSignIn: () => void;
-  onReloadTokens: () => void;
-  onPurchaseComplete: () => void;
 }) {
+  const { addToCart, isInCart, openCart, busyProductId, checkoutVersion } = useMarketplaceCart();
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
   const [ownedProductIds, setOwnedProductIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyProductId, setBusyProductId] = useState<string | null>(null);
+  const [downloadingProductId, setDownloadingProductId] = useState<string | null>(null);
   const wallet = { tokens: availableTokens, freeTokens, shareableTokens };
 
   const loadCatalog = useCallback(async () => {
@@ -77,6 +75,25 @@ export function MarketplaceSection({
     loadCatalog();
   }, [loadCatalog]);
 
+  useEffect(() => {
+    if (!checkoutVersion || !isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const purchasesRes = await fetch('/api/marketplace/purchases', { headers: await getAuthHeaders() });
+        const purchasesData = await purchasesRes.json();
+        if (!cancelled && purchasesRes.ok) {
+          setOwnedProductIds(new Set(purchasesData.ownedProductIds || []));
+        }
+      } catch {
+        // Catalog refresh is best-effort after checkout.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutVersion, getAuthHeaders, isSignedIn]);
+
   async function downloadProduct(productId: string) {
     const res = await fetch(`/api/marketplace/download?productId=${encodeURIComponent(productId)}`, {
       headers: await getAuthHeaders(),
@@ -86,41 +103,28 @@ export function MarketplaceSection({
     window.location.assign(data.downloadUrl);
   }
 
-  async function handleBuyOrDownload(product: MarketplaceProduct) {
+  async function handleProductAction(product: MarketplaceProduct) {
     if (!isSignedIn) {
       onSignIn();
       return;
     }
 
-    setBusyProductId(product.id);
     setError(null);
     try {
-      if (!ownedProductIds.has(product.id)) {
-        if (product.tokenPrice > availableTokens) {
-          onReloadTokens();
-          return;
-        }
-        const res = await fetch('/api/marketplace/purchase', {
-          method: 'POST',
-          headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId: product.id }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (res.status === 402) {
-            onReloadTokens();
-            return;
-          }
-          throw new Error(data?.error || 'Unable to purchase.');
-        }
-        setOwnedProductIds(current => new Set(current).add(product.id));
-        onPurchaseComplete();
+      if (ownedProductIds.has(product.id)) {
+        setDownloadingProductId(product.id);
+        await downloadProduct(product.id);
+        return;
       }
-      await downloadProduct(product.id);
+      if (isInCart(product.id)) {
+        openCart();
+        return;
+      }
+      await addToCart(product.id);
     } catch (e: any) {
-      setError(e.message || 'Unable to complete purchase.');
+      setError(e.message || 'Unable to update your cart.');
     } finally {
-      setBusyProductId(null);
+      setDownloadingProductId(null);
     }
   }
 
@@ -131,15 +135,18 @@ export function MarketplaceSection({
           <Badge variant="outline" className="mb-3">Marketplace</Badge>
           <h2 className="text-3xl font-bold tracking-normal">Teaching materials marketplace</h2>
           <p className="mt-2 max-w-2xl text-muted-foreground">
-            Buy classroom resources with your token wallet. Checkout uses bronze free and reward tokens first, then gold reload tokens. Paid packs stay in your account so you can download them again.
+            Add classroom packs to your cart, then check out with your token wallet. Bronze free and reward tokens are used first, then gold reload tokens. Paid packs stay in your account so you can download them again.
           </p>
         </div>
-        {isSignedIn && (
-          <div className="rounded-2xl border bg-muted/40 p-3">
-            <p className="mb-2 text-xs text-muted-foreground">Wallet for checkout</p>
-            <TokenBalanceChips wallet={wallet} />
-          </div>
-        )}
+        <div className="flex flex-col items-stretch gap-3 sm:items-end">
+          {isSignedIn && (
+            <div className="rounded-2xl border bg-muted/40 p-3">
+              <p className="mb-2 text-xs text-muted-foreground">Wallet for checkout</p>
+              <TokenBalanceChips wallet={wallet} />
+            </div>
+          )}
+          {isSignedIn && <MarketplaceCartButton />}
+        </div>
       </div>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
@@ -152,8 +159,8 @@ export function MarketplaceSection({
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {products.map(product => {
           const owned = ownedProductIds.has(product.id);
-          const busy = busyProductId === product.id;
-          const needsReload = isSignedIn && !owned && product.tokenPrice > availableTokens;
+          const inCart = isInCart(product.id);
+          const busy = busyProductId === product.id || downloadingProductId === product.id;
           return (
             <Card key={product.id} className="overflow-hidden">
               {product.coverDownloadUrl && (
@@ -171,23 +178,18 @@ export function MarketplaceSection({
                 {product.description && (
                   <p className="text-sm text-muted-foreground">{product.description}</p>
                 )}
-                {isSignedIn && !owned && product.tokenPrice > 0 && (
-                  <div className="rounded-lg border bg-muted/40 p-3">
-                    <TokenSpendPreview wallet={wallet} cost={product.tokenPrice} />
-                  </div>
-                )}
-                <Button className="w-full" onClick={() => handleBuyOrDownload(product)} disabled={busy}>
+                <Button className="w-full" onClick={() => handleProductAction(product)} disabled={busy}>
                   {busy
                     ? 'Working…'
                     : !isSignedIn
                       ? 'Sign in to get'
                       : owned
                         ? 'Download'
-                        : needsReload
-                          ? 'Reload tokens'
+                        : inCart
+                          ? 'View cart'
                           : product.tokenPrice === 0
-                            ? 'Get free pack'
-                            : `Buy for ${product.tokenPrice} tokens`}
+                            ? 'Add free pack to cart'
+                            : `Add to cart · ${product.tokenPrice} tokens`}
                 </Button>
               </CardContent>
             </Card>
