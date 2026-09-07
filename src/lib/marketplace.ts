@@ -23,6 +23,29 @@ export function purchaseDocId(uid: string, productId: string) {
   return `${uid}_${productId}`;
 }
 
+export const MARKETPLACE_MAX_CART_ITEMS = 25;
+
+export function uniqueCartProductIds(ids: unknown) {
+  if (!Array.isArray(ids)) return [];
+  const seen = new Set<string>();
+  const productIds: string[] = [];
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id.trim() || seen.has(id)) continue;
+    seen.add(id);
+    productIds.push(id);
+    if (productIds.length >= MARKETPLACE_MAX_CART_ITEMS) break;
+  }
+  return productIds;
+}
+
+export function marketplaceCartTotal(items: Array<{ tokenPrice?: unknown }>) {
+  return items.reduce((sum, item) => {
+    const price = Number(item.tokenPrice || 0);
+    if (!Number.isFinite(price) || price < 0) return sum;
+    return sum + Math.floor(price);
+  }, 0);
+}
+
 export function marketplaceZipPath(productId: string) {
   return `marketplace/${productId}/file.zip`;
 }

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -40,6 +40,7 @@ type AppHeaderProps = {
     onOpenTokenHistory?: () => void;
     onOpenReferralRewards?: () => void;
     onResetAccount?: () => void;
+    cartButton?: ReactNode;
 };
 
 export function AppHeader({
@@ -51,6 +52,7 @@ export function AppHeader({
     onOpenTokenHistory,
     onOpenReferralRewards,
     onResetAccount,
+    cartButton,
 }: AppHeaderProps) {
     const { user, isUserLoading, isAdmin, signInWithGoogle, signOut } = useUser();
     const { toast } = useToast();
@@ -156,6 +158,7 @@ export function AppHeader({
 
                     <div className="flex flex-1 items-center justify-end">
                         <nav className="flex flex-wrap items-center justify-end gap-2">
+                        {cartButton}
                         {user && typeof availableTokens === 'number' && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

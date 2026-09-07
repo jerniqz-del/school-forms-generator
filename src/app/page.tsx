@@ -14,6 +14,7 @@ import { saveAs } from 'file-saver';
 
 import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag } from 'lucide-react';
 import { MarketplaceSection } from '@/components/marketplace/marketplace-section';
+import { MarketplaceCartButton, MarketplaceCartProvider } from '@/components/marketplace/marketplace-cart';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -2729,6 +2730,15 @@ const formatPolishedName = (name: string): string => {
 
   return (
     <TooltipProvider>
+      <MarketplaceCartProvider
+        isSignedIn={!!authUser}
+        availableTokens={availableTokens}
+        freeTokens={walletBalances.freeTokens}
+        shareableTokens={walletBalances.shareableTokens}
+        getAuthHeaders={getAuthHeaders}
+        onReloadTokens={() => setIsTokenReloadOpen(true)}
+        onPurchaseComplete={() => { refreshTokenWallet().catch(() => null); }}
+      >
       {hasMounted && (
         <AppHeader
           availableTokens={tokenWallet?.tokens ?? null}
@@ -2739,6 +2749,7 @@ const formatPolishedName = (name: string): string => {
           onOpenTokenHistory={handleOpenTokenHistory}
           onOpenReferralRewards={handleOpenReferralRewards}
           onResetAccount={handleAccountReset}
+          cartButton={authUser ? <MarketplaceCartButton /> : null}
         />
       )}
       <div className="container mx-auto px-4 pt-6 pb-24 space-y-6">
@@ -3476,8 +3487,6 @@ const formatPolishedName = (name: string): string => {
                 shareableTokens={walletBalances.shareableTokens}
                 getAuthHeaders={getAuthHeaders}
                 onSignIn={signInWithGoogle}
-                onReloadTokens={() => setIsTokenReloadOpen(true)}
-                onPurchaseComplete={() => { refreshTokenWallet().catch(() => null); }}
               />
             )}
 
@@ -4317,6 +4326,7 @@ const formatPolishedName = (name: string): string => {
           </main>
         </div>
       </div>
+      </MarketplaceCartProvider>
     </TooltipProvider>
   );
 }
