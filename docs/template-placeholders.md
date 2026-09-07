@@ -87,7 +87,7 @@ For multiple sections, each generated Kindergarten DOCX receives a corresponding
 
 ## SPED classes
 
-SF1 files are treated as SPED when the grade, section, filename, or header contains `SPED`, `SNED`, `special education`, or `special needs`.
+SF1 files are treated as SPED when the grade, section, filename, or header contains `SPED`, `SNED`, `Non-graded`, `special education`, or `special needs`.
 
 The default template is `SPED PRC - Cover.docx`. Users can switch to a regular grade template for inclusivized learners. Generating with the SPED cover produces a ZIP containing:
 

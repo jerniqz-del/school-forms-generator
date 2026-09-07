@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Store } from "lucide-react";
 
 type AppHeaderProps = {
@@ -137,7 +138,10 @@ export function AppHeader({
                                 <Store className="size-5" />
                             </span>
                             <span className="flex flex-col leading-tight">
-                                <span className="text-lg font-bold tracking-normal">TeachTiangge</span>
+                                <span className="flex items-center gap-2">
+                                    <span className="text-lg font-bold tracking-normal">TeachTiangge</span>
+                                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{APP_VERSION_LABEL}</span>
+                                </span>
                                 <span className="hidden text-xs text-muted-foreground sm:inline">Your go to digital store for teaching related materials.</span>
                             </span>
                         </Link>

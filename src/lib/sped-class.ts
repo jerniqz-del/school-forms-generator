@@ -15,7 +15,7 @@ export function isSpedGrade(gradeLevel: string): boolean {
 
 export function looksLikeSpedSf1(...parts: Array<string | undefined | null>): boolean {
   const text = parts.filter(Boolean).join(' ').toLowerCase();
-  return /(?:^|[^a-z0-9])(?:sped|sned)(?:[^a-z0-9]|$)|special\s*education|special\s*needs/.test(text);
+  return /(?:^|[^a-z0-9])(?:sped|sned)(?:[^a-z0-9]|$)|special\s*education|special\s*needs|non[\s_-]*graded/.test(text);
 }
 
 export function isSpedCoverTemplate(templateUrlOrName: string): boolean {

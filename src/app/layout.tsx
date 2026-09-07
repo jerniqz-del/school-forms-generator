@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Fredoka } from 'next/font/google';
 import { AppProviders } from '@/app/providers';
+import { APP_VERSION_LABEL } from '@/lib/app-version';
 
 const fredoka = Fredoka({
   subsets: ['latin'],
@@ -10,7 +11,7 @@ const fredoka = Fredoka({
 });
 
 export const metadata: Metadata = {
-  title: 'TeachTiangge',
+  title: `TeachTiangge ${APP_VERSION_LABEL}`,
   description: 'Your go to digital store for teaching related materials.',
 };
 

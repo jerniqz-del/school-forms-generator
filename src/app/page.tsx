@@ -75,6 +75,7 @@ import { useUser as useAuthUser } from '@/firebase/auth/use-user';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
+import { APP_VERSION_LABEL } from '@/lib/app-version';
 import {
   formatGradeTemplateLabel,
   isSpedCoverTemplate,
@@ -3322,7 +3323,10 @@ const formatPolishedName = (name: string): string => {
                     <Store className="size-5" />
                   </span>
                   <div>
-                    <p className="text-lg font-bold leading-tight">TeachTiangge</p>
+                    <p className="flex items-center gap-2 text-lg font-bold leading-tight">
+                      TeachTiangge
+                      <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">{APP_VERSION_LABEL}</span>
+                    </p>
                     <p className="text-xs leading-snug text-primary-foreground/80">Your go to digital store for teaching related materials.</p>
                   </div>
                 </div>
