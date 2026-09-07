@@ -106,6 +106,7 @@ import {
   buildKindergartenTemplateFields,
   getDefaultSchoolYearStartDate,
 } from '@/lib/kindergarten-template';
+import { cropLogoToCanvas } from '@/lib/crop-logo';
 
 type StudentRecord = {
   LRN: string;
@@ -2569,33 +2570,8 @@ const formatPolishedName = (name: string): string => {
     }
 
     const canvas = document.createElement('canvas');
-    const scaleX = image.naturalWidth / image.width;
-    const scaleY = image.naturalHeight / image.height;
-    
-    const ctx = canvas.getContext('2d');
+    cropLogoToCanvas(image, completedCrop, canvas);
 
-    if (!ctx) {
-      throw new Error('No 2d context');
-    }
-
-    const pixelRatio = window.devicePixelRatio;
-    canvas.width = Math.round(completedCrop.width * pixelRatio);
-    canvas.height = Math.round(completedCrop.height * pixelRatio);
-    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    ctx.imageSmoothingQuality = 'high';
-
-    ctx.drawImage(
-      image,
-      completedCrop.x * scaleX,
-      completedCrop.y * scaleY,
-      completedCrop.width * scaleX,
-      completedCrop.height * scaleY,
-      0,
-      0,
-      Math.round(completedCrop.width * pixelRatio),
-      Math.round(completedCrop.height * pixelRatio)
-    );
-    
     const newLogo = canvas.toDataURL('image/png');
     setCroppedLogo(newLogo);
     setIsEditorOpen(false);
@@ -2817,14 +2793,14 @@ const formatPolishedName = (name: string): string => {
                 minWidth={100}
                 minHeight={100}
               >
-                <Image
+                {/* Native img keeps displayed vs natural pixel mapping accurate for cropping. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   ref={imgRef}
                   alt="Crop me"
                   src={logoSrc}
-                  width={400}
-                  height={400}
                   onLoad={onImageLoad}
-                  className="max-h-[60vh] object-contain"
+                  className="max-h-[60vh] max-w-full object-contain"
                 />
               </ReactCrop>
               </div>
