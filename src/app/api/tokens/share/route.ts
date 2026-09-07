@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
+import { readTokenBalances } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,19 +25,18 @@ export async function POST(request: NextRequest) {
 
     await db.runTransaction(async transaction => {
       const senderSnap = await transaction.get(senderRef);
-      const sender = senderSnap.data() || {};
-      const senderTokens = Number(sender.tokens || 0);
-      const shareableTokens = Number(sender.shareableTokens || 0);
-      if (!senderSnap.exists || senderTokens < amount) {
+      const sender = readTokenBalances(senderSnap.data());
+      if (!senderSnap.exists || sender.tokens < amount) {
         throw new Error('Insufficient tokens.');
       }
-      if (shareableTokens < amount) {
-        throw new Error('Only reloaded tokens can be shared.');
+      if (sender.shareableTokens < amount) {
+        throw new Error('Only gold reload tokens can be shared.');
       }
 
       transaction.update(senderRef, {
-        tokens: FieldValue.increment(-amount),
-        shareableTokens: FieldValue.increment(-amount),
+        tokens: sender.tokens - amount,
+        freeTokens: sender.freeTokens,
+        shareableTokens: sender.shareableTokens - amount,
         sharedTokensSent: FieldValue.increment(amount),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -52,13 +52,17 @@ export async function POST(request: NextRequest) {
         type: 'share_sent',
         recipientEmail: normalizedEmail,
         tokens: -amount,
+        bronzeTokens: 0,
+        goldTokens: -amount,
         createdAt: FieldValue.serverTimestamp(),
       });
     });
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
-    const status = error.message === 'Insufficient tokens.' ? 402 : 500;
+    const status = error.message === 'Insufficient tokens.' ? 402
+      : error.message === 'Only gold reload tokens can be shared.' ? 400
+      : 500;
     return NextResponse.json({ error: error.message || 'Unable to share tokens.' }, { status });
   }
 }

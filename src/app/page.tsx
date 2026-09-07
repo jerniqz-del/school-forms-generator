@@ -101,7 +101,9 @@ import {
   calculateAllowableStudentForms,
   calculateTokenCost,
   calculateTokenReload,
+  readTokenBalances,
 } from '@/lib/tokens';
+import { TokenBalanceChips, TokenSpendPreview, TokenWalletBreakdown } from '@/components/token-wallet-display';
 import {
   buildKindergartenTemplateFields,
   getDefaultSchoolYearStartDate,
@@ -226,6 +228,7 @@ type PaidGenerationTokenLedger = {
 
 type TokenWallet = {
   tokens: number;
+  freeTokens?: number;
   shareableTokens?: number;
   reservedTokens: number;
   referralCode: string;
@@ -257,6 +260,8 @@ type TokenHistoryItem = {
   id: string;
   type: string;
   tokens: number;
+  bronzeTokens: number | null;
+  goldTokens: number | null;
   amountPesos: number | null;
   studentCount: number | null;
   completedGenerations: number | null;
@@ -758,6 +763,8 @@ function getTokenHistoryTitle(type: string) {
     referral_reward: 'Referral reward',
     generation: 'Forms generated',
     generation_reward: 'Generation reward',
+    marketplace_purchase: 'Marketplace purchase',
+    admin_credit: 'Reward tokens',
   };
   return labels[type] || 'Token activity';
 }
@@ -770,7 +777,15 @@ function getTokenHistoryDetail(item: TokenHistoryItem) {
   if (item.type === 'share_received') return 'Received from another registered user.';
   if (item.type === 'referral_signup_bonus') return 'Bonus for signing up with a referral link.';
   if (item.type === 'referral_reward') return 'Reward after a referred teacher completed their first reload.';
-  if (item.type === 'signup_bonus') return 'Initial free tokens for a new account.';
+  if (item.type === 'signup_bonus') return 'Initial bronze tokens for a new account.';
+  if (item.type === 'marketplace_purchase') return 'Bronze tokens are used first, then gold.';
+  if (item.type === 'admin_credit') return 'Bronze reward tokens added by an admin.';
+  if (item.bronzeTokens || item.goldTokens) {
+    const parts = [];
+    if (item.bronzeTokens) parts.push(`${Math.abs(item.bronzeTokens)} bronze`);
+    if (item.goldTokens) parts.push(`${Math.abs(item.goldTokens)} gold`);
+    return parts.join(', ') + '.';
+  }
   return 'Wallet balance activity.';
 }
 
@@ -2222,7 +2237,7 @@ const formatPolishedName = (name: string): string => {
       toast({
         variant: 'success',
         title: 'Tokens Shared',
-        description: `${shareTokenAmount} token(s) reserved for ${shareEmail}.`,
+        description: `${shareTokenAmount} gold token(s) reserved for ${shareEmail}.`,
       });
     } catch (error: any) {
       toast({
@@ -2636,7 +2651,8 @@ const formatPolishedName = (name: string): string => {
   const hasSpedFiles = filesData.some(file => isSpedGrade(file.fileInfo.gradeLevel));
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
   const hasIncompleteSpecialClass = filesData.some(file => isSpecialClassSelectionIncomplete(file.fileInfo));
-  const availableTokens = tokenWallet?.tokens || 0;
+  const walletBalances = readTokenBalances(tokenWallet);
+  const availableTokens = walletBalances.tokens;
   const allowableStudentForms = calculateAllowableStudentForms(availableTokens);
   const generationStudentLimit = isPromoApplied ? totalSelectedStudents : Math.min(totalSelectedStudents, allowableStudentForms);
   const requiredTokens = calculateTokenCost(generationStudentLimit);
@@ -2694,7 +2710,7 @@ const formatPolishedName = (name: string): string => {
         variant: 'success',
         title: rewardTokens > 0 ? 'Generation Reward Added' : 'Tokens Consumed',
         description: rewardTokens > 0
-          ? `Your generation has been completed. ${rewardTokens} bonus token(s) were added.`
+          ? `Your generation has been completed. ${rewardTokens} bronze bonus token(s) were added.`
           : 'Your generation has been completed.',
       });
     } catch (error: any) {
@@ -2719,6 +2735,8 @@ const formatPolishedName = (name: string): string => {
       {hasMounted && (
         <AppHeader
           availableTokens={tokenWallet?.tokens ?? null}
+          freeTokens={walletBalances.freeTokens}
+          shareableTokens={walletBalances.shareableTokens}
           onReloadTokens={() => setIsTokenReloadOpen(true)}
           onShareTokens={() => setIsTokenShareOpen(true)}
           onOpenTokenHistory={handleOpenTokenHistory}
@@ -2788,7 +2806,7 @@ const formatPolishedName = (name: string): string => {
                         </ul>
 
                         <h3 className="font-semibold text-foreground">4. Tokens, Payments, Referrals, and Sharing</h3>
-                        <p>Each selected student form generation consumes tokens. New registered users receive a free starting balance. Additional tokens may be reloaded through PayMongo, may include promotional bonus tokens, may be rewarded through referrals or generation milestones, and may be shared with other users when eligible.</p>
+                        <p>Each selected student form generation consumes tokens. Bronze tokens are free and reward tokens: they are used first and cannot be shared. Gold tokens come from reloads, including reload bonuses, and can be shared with other teachers. Marketplace checkout uses the same order: bronze first, then gold.</p>
                         <p>Tokens are reserved before generation and consumed only after you confirm that the file was downloaded. Failed generation attempts release reserved tokens. Token reload payments are final once credited to your account.</p>
 
                         <p className="font-bold">By using this app, you agree to these terms and accept full responsibility for the use and verification of all generated data.</p>
@@ -2912,6 +2930,8 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label={isSelectionTokenLimited ? "Forms to Generate Now" : "Forms to Generate"} value={`${generationStudentLimit} of ${totalSelectedStudents} selected`} />
                 <SummaryItem label={isSelectionTokenLimited ? "Tokens Used Now" : "Required Tokens"} value={`${requiredTokens} tokens (${TOKENS_PER_STUDENT_FORM} per student form)`} />
                 <SummaryItem label="Available Tokens" value={`${availableTokens} tokens`} />
+                <SummaryItem label="Bronze tokens" value={`${walletBalances.freeTokens} (used first, not shareable)`} />
+                <SummaryItem label="Gold tokens" value={`${walletBalances.shareableTokens} (from reloads, shareable)`} />
                 <SummaryItem label="School Name" value={sharedInfo.school} />
                 <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
                 <SummaryItem label="School Head Designation" value={sharedInfo.schoolHeadDesignation} />
@@ -2985,6 +3005,15 @@ const formatPolishedName = (name: string): string => {
                             <span>Available Tokens:</span>
                             <span className="font-medium text-foreground">{availableTokens}</span>
                           </div>
+                          <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                            <span>Wallet:</span>
+                            <TokenBalanceChips wallet={tokenWallet} compact />
+                          </div>
+                          {!isPromoApplied && requiredTokens > 0 && (
+                            <div className="border-t pt-2">
+                              <TokenSpendPreview wallet={tokenWallet} cost={requiredTokens} />
+                            </div>
+                          )}
 
                           <div className="flex justify-between items-center pt-2 border-t font-semibold text-sm text-foreground">
                             <span>{isSelectionTokenLimited ? 'Tokens Used Now:' : 'Required Tokens:'}</span>
@@ -3095,7 +3124,7 @@ const formatPolishedName = (name: string): string => {
                         Reload Tokens
                     </DialogTitle>
                     <DialogDescription>
-                        Minimum reload is PHP {TOKEN_RELOAD_MIN_PESOS}. PHP 20 gives 50 tokens. Reload more than PHP 100 to receive 5% bonus tokens.
+                        Minimum reload is PHP {TOKEN_RELOAD_MIN_PESOS}. Reloaded tokens are gold and can be shared. PHP 20 gives 50 gold tokens. Reload more than PHP 100 to receive 5% bonus gold tokens.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -3111,15 +3140,15 @@ const formatPolishedName = (name: string): string => {
                     </div>
                     <div className="rounded-lg border bg-muted/40 p-3 text-sm">
                         <div className="flex justify-between">
-                            <span>Base tokens</span>
+                            <span>Base gold tokens</span>
                             <span className="font-semibold">{reloadPreview.baseTokens}</span>
                         </div>
                         <div className="flex justify-between text-emerald-600">
-                            <span>Bonus tokens</span>
+                            <span>Bonus gold tokens</span>
                             <span className="font-semibold">+{reloadPreview.bonusTokens}</span>
                         </div>
                         <div className="mt-2 flex justify-between border-t pt-2 font-semibold">
-                            <span>Total tokens</span>
+                            <span>Total gold tokens</span>
                             <span>{reloadPreview.totalTokens}</span>
                         </div>
                     </div>
@@ -3139,7 +3168,7 @@ const formatPolishedName = (name: string): string => {
                         Referral Rewards
                     </DialogTitle>
                     <DialogDescription>
-                        Invite another teacher. They receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bonus tokens when they sign up, and you receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bonus tokens after their first token reload.
+                        Invite another teacher. They receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bronze bonus tokens when they sign up, and you receive {referralSummary?.rewardTokens || REFERRAL_REWARD_TOKENS} bronze bonus tokens after their first gold token reload.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -3260,14 +3289,15 @@ const formatPolishedName = (name: string): string => {
                         Share Tokens
                     </DialogTitle>
                     <DialogDescription>
-                        Only tokens bought through reload can be shared.
+                        Only gold tokens from reloads can be shared. Bronze free and reward tokens stay with your account.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
-                    <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                    <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm space-y-2">
+                        <TokenBalanceChips wallet={tokenWallet} />
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Shareable reload tokens</span>
-                            <span className="font-semibold">{tokenWallet?.shareableTokens || 0}</span>
+                            <span className="text-muted-foreground">Shareable gold tokens</span>
+                            <span className="font-semibold">{walletBalances.shareableTokens}</span>
                         </div>
                     </div>
                     <Input
@@ -3278,13 +3308,13 @@ const formatPolishedName = (name: string): string => {
                     <Input
                         type="number"
                         min={1}
-                        max={tokenWallet?.shareableTokens || 0}
+                        max={walletBalances.shareableTokens}
                         value={shareTokenAmount}
                         onChange={(event) => setShareTokenAmount(Number(event.target.value))}
                     />
                 </div>
                 <DialogFooter>
-                    <Button onClick={handleShareTokens} disabled={(tokenWallet?.shareableTokens || 0) < 1}>Share Tokens</Button>
+                    <Button onClick={handleShareTokens} disabled={walletBalances.shareableTokens < 1}>Share Gold Tokens</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -3356,15 +3386,7 @@ const formatPolishedName = (name: string): string => {
 
               {authUser && (
                 <div className="mt-auto rounded-2xl border bg-background/80 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Available Tokens</p>
-                      <p className="text-3xl font-bold text-foreground">{availableTokens}</p>
-                    </div>
-                    <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                      <Coins className="size-6" />
-                    </div>
-                  </div>
+                  <TokenWalletBreakdown wallet={tokenWallet} />
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Button size="sm" onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
                     <Button size="sm" variant="outline" onClick={handleOpenTokenHistory}>History</Button>
@@ -3461,15 +3483,14 @@ const formatPolishedName = (name: string): string => {
                         <Coins className="size-5 text-primary" />
                         Token Wallet
                       </CardTitle>
-                      <CardDescription>Tokens remain available across TeachTiangge.</CardDescription>
+                      <CardDescription>Bronze free and reward tokens are used first. Gold reload tokens can be shared.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="flex items-end justify-between rounded-2xl border bg-primary/5 p-4">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Available tokens</p>
-                          <p className="text-4xl font-bold text-foreground">{availableTokens}</p>
+                      <div className="rounded-2xl border bg-primary/5 p-4">
+                        <TokenWalletBreakdown wallet={tokenWallet} />
+                        <div className="mt-3">
+                          <Badge variant="outline">{allowableStudentForms} form(s)</Badge>
                         </div>
-                        <Badge variant="outline">{allowableStudentForms} form(s)</Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <Button onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
@@ -3560,6 +3581,8 @@ const formatPolishedName = (name: string): string => {
               <MarketplaceSection
                 isSignedIn={!!authUser}
                 availableTokens={availableTokens}
+                freeTokens={walletBalances.freeTokens}
+                shareableTokens={walletBalances.shareableTokens}
                 getAuthHeaders={getAuthHeaders}
                 onSignIn={signInWithGoogle}
                 onReloadTokens={() => setIsTokenReloadOpen(true)}

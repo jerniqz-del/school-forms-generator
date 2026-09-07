@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import { purchaseDocId } from '@/lib/marketplace';
+import { applyTokenSpend } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,14 +46,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (tokenPrice > 0) {
-        const available = Number(walletSnap.data()?.tokens || 0);
-        if (!walletSnap.exists || available < tokenPrice) {
-          throw new Error('Insufficient tokens.');
-        }
+        const spend = applyTokenSpend(walletSnap.data(), tokenPrice);
 
         transaction.update(walletRef, {
-          tokens: FieldValue.increment(-tokenPrice),
+          tokens: spend.next.tokens,
+          freeTokens: spend.next.freeTokens,
+          shareableTokens: spend.next.shareableTokens,
           spentTokens: FieldValue.increment(tokenPrice),
+          spentFreeTokens: FieldValue.increment(spend.bronzeUsed),
+          spentShareableTokens: FieldValue.increment(spend.goldUsed),
           updatedAt: FieldValue.serverTimestamp(),
         });
         transaction.set(db.collection('tokenLedger').doc(), {
@@ -60,6 +62,8 @@ export async function POST(request: NextRequest) {
           type: 'marketplace_purchase',
           productId,
           tokens: -tokenPrice,
+          bronzeTokens: -spend.bronzeUsed,
+          goldTokens: -spend.goldUsed,
           createdAt: FieldValue.serverTimestamp(),
         });
       }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, isSuperAdminToken, requireDecodedTokenFromRequest } from '@/lib/firebase-admin';
+import { creditFreeTokens } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
           uid,
           email: normalized,
           tokens: amount,
+          freeTokens: amount,
           reservedTokens: 0,
           shareableTokens: 0,
           spentTokens: 0,
@@ -57,8 +59,11 @@ export async function POST(request: NextRequest) {
           updatedAt: FieldValue.serverTimestamp(),
         });
       } else {
+        const nextBalances = creditFreeTokens(walletSnap.data(), amount);
         transaction.update(walletRef, {
-          tokens: FieldValue.increment(amount),
+          tokens: nextBalances.tokens,
+          freeTokens: nextBalances.freeTokens,
+          shareableTokens: nextBalances.shareableTokens,
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
@@ -67,6 +72,8 @@ export async function POST(request: NextRequest) {
         uid,
         type: 'admin_credit',
         tokens: amount,
+        bronzeTokens: amount,
+        goldTokens: 0,
         adminUid: decoded.uid,
         adminEmail: decoded.email || null,
         recipientEmail: normalized,

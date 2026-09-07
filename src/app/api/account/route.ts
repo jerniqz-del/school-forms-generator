@@ -5,6 +5,7 @@ import {
   getAdminFirestore,
   requireDecodedTokenFromRequest,
 } from '@/lib/firebase-admin';
+import { readTokenBalances, reservationReleaseAmounts } from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,9 +40,18 @@ async function releaseReservedTokens(uid: string) {
   const totalReserved = reservations.docs.reduce((sum: number, docSnap: any) => {
     return sum + Number(docSnap.data()?.tokens || 0);
   }, 0);
+  const releasedFreeTokens = reservations.docs.reduce((sum: number, docSnap: any) => {
+    return sum + reservationReleaseAmounts(docSnap.data()).freeTokens;
+  }, 0);
+  const releasedShareableTokens = reservations.docs.reduce((sum: number, docSnap: any) => {
+    return sum + reservationReleaseAmounts(docSnap.data()).shareableTokens;
+  }, 0);
 
   await db.runTransaction(async transaction => {
     const walletRef = db.collection('tokenWallets').doc(uid);
+    const walletSnap = await transaction.get(walletRef);
+    const current = readTokenBalances(walletSnap.data());
+
     reservations.docs.forEach((docSnap: any) => {
       transaction.update(docSnap.ref, {
         status: 'released',
@@ -54,7 +64,9 @@ async function releaseReservedTokens(uid: string) {
       transaction.set(
         walletRef,
         {
-          tokens: FieldValue.increment(totalReserved),
+          tokens: current.tokens + totalReserved,
+          freeTokens: current.freeTokens + releasedFreeTokens,
+          shareableTokens: current.shareableTokens + releasedShareableTokens,
           reservedTokens: FieldValue.increment(-totalReserved),
           updatedAt: FieldValue.serverTimestamp(),
         },

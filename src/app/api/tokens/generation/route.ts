@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
-import { GENERATION_REWARD_INTERVAL, GENERATION_REWARD_TOKENS, calculateTokenCost } from '@/lib/tokens';
+import {
+  GENERATION_REWARD_INTERVAL,
+  GENERATION_REWARD_TOKENS,
+  applyTokenSpend,
+  calculateTokenCost,
+  creditFreeTokens,
+  readTokenBalances,
+  reservationReleaseAmounts,
+} from '@/lib/tokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,15 +31,12 @@ export async function POST(request: NextRequest) {
       const createdReservationRef = db.collection('tokenReservations').doc();
       await db.runTransaction(async transaction => {
         const walletSnap = await transaction.get(walletRef);
-        const wallet = walletSnap.data();
-        const available = Number(wallet?.tokens || 0);
-
-        if (!walletSnap.exists || available < tokens) {
-          throw new Error('Insufficient tokens.');
-        }
+        const spend = applyTokenSpend(walletSnap.data(), tokens);
 
         transaction.update(walletRef, {
-          tokens: FieldValue.increment(-tokens),
+          tokens: spend.next.tokens,
+          freeTokens: spend.next.freeTokens,
+          shareableTokens: spend.next.shareableTokens,
           reservedTokens: FieldValue.increment(tokens),
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -39,6 +44,8 @@ export async function POST(request: NextRequest) {
           uid,
           studentCount: count,
           tokens,
+          bronzeTokens: spend.bronzeUsed,
+          goldTokens: spend.goldUsed,
           status: 'reserved',
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
@@ -64,27 +71,37 @@ export async function POST(request: NextRequest) {
         if (reservation.status !== 'reserved') return;
 
         const tokens = Number(reservation.tokens || 0);
+        const release = reservationReleaseAmounts(reservation);
         if (action === 'release') {
+          const walletSnap = await transaction.get(walletRef);
+          const current = readTokenBalances(walletSnap.data());
           transaction.update(walletRef, {
-            tokens: FieldValue.increment(tokens),
+            tokens: current.tokens + release.tokens,
+            freeTokens: current.freeTokens + release.freeTokens,
+            shareableTokens: current.shareableTokens + release.shareableTokens,
             reservedTokens: FieldValue.increment(-tokens),
             updatedAt: FieldValue.serverTimestamp(),
           });
         } else {
           const walletSnap = await transaction.get(walletRef);
           const wallet = walletSnap.data() || {};
-          const studentCount = Number(reservation.studentCount || 0);
+          const studentCountValue = Number(reservation.studentCount || 0);
           const previousGenerations = Number(wallet.completedGenerations || 0);
-          const nextGenerations = previousGenerations + studentCount;
+          const nextGenerations = previousGenerations + studentCountValue;
           const previousMilestones = Math.floor(previousGenerations / GENERATION_REWARD_INTERVAL);
           const nextMilestones = Math.floor(nextGenerations / GENERATION_REWARD_INTERVAL);
           rewardTokens = Math.max(0, nextMilestones - previousMilestones) * GENERATION_REWARD_TOKENS;
+          const rewarded = creditFreeTokens(wallet, rewardTokens);
 
           transaction.update(walletRef, {
-            tokens: FieldValue.increment(rewardTokens),
+            tokens: rewarded.tokens,
+            freeTokens: rewarded.freeTokens,
+            shareableTokens: rewarded.shareableTokens,
             reservedTokens: FieldValue.increment(-tokens),
             spentTokens: FieldValue.increment(tokens),
-            completedGenerations: FieldValue.increment(studentCount),
+            spentFreeTokens: FieldValue.increment(release.freeTokens),
+            spentShareableTokens: FieldValue.increment(release.shareableTokens),
+            completedGenerations: FieldValue.increment(studentCountValue),
             lifetimeGenerationRewards: FieldValue.increment(rewardTokens),
             updatedAt: FieldValue.serverTimestamp(),
           });
@@ -93,6 +110,8 @@ export async function POST(request: NextRequest) {
             type: 'generation',
             reservationId,
             tokens: -tokens,
+            bronzeTokens: -release.freeTokens,
+            goldTokens: -release.shareableTokens,
             studentCount: reservation.studentCount,
             createdAt: FieldValue.serverTimestamp(),
           });
@@ -102,7 +121,9 @@ export async function POST(request: NextRequest) {
               type: 'generation_reward',
               reservationId,
               tokens: rewardTokens,
-              studentCount,
+              bronzeTokens: rewardTokens,
+              goldTokens: 0,
+              studentCount: studentCountValue,
               completedGenerations: nextGenerations,
               createdAt: FieldValue.serverTimestamp(),
             });

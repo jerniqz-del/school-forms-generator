@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
           uid: item.uid || null,
           type: item.type || 'token_event',
           tokens: Number(item.tokens || 0),
+          bronzeTokens: typeof item.bronzeTokens === 'number' ? item.bronzeTokens : null,
+          goldTokens: typeof item.goldTokens === 'number' ? item.goldTokens : null,
           amountPesos: typeof item.amountPesos === 'number' ? item.amountPesos : null,
           studentCount: typeof item.studentCount === 'number' ? item.studentCount : null,
           completedGenerations: typeof item.completedGenerations === 'number' ? item.completedGenerations : null,
