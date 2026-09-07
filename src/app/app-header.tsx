@@ -29,7 +29,7 @@ import { useUser } from "@/firebase/auth/use-user";
 import { useToast } from "@/components/ui/use-toast";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { TokenBalanceChips, TokenWalletBreakdown } from "@/components/token-wallet-display";
-import { Coins, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Store } from "lucide-react";
+import { Coins, Gift, History, LogIn, LogOut, RotateCcw, Settings, Share2, Trash2, UserCircle, Store } from "lucide-react";
 
 type AppHeaderProps = {
     availableTokens?: number | null;
@@ -38,6 +38,7 @@ type AppHeaderProps = {
     onReloadTokens?: () => void;
     onShareTokens?: () => void;
     onOpenTokenHistory?: () => void;
+    onOpenReferralRewards?: () => void;
     onResetAccount?: () => void;
 };
 
@@ -48,6 +49,7 @@ export function AppHeader({
     onReloadTokens,
     onShareTokens,
     onOpenTokenHistory,
+    onOpenReferralRewards,
     onResetAccount,
 }: AppHeaderProps) {
     const { user, isUserLoading, isAdmin, signInWithGoogle, signOut } = useUser();
@@ -185,6 +187,10 @@ export function AppHeader({
                                         <Button variant="outline" size="sm" onClick={onOpenTokenHistory} className="flex-1 gap-2">
                                             <History className="size-4" />
                                             History
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={onOpenReferralRewards} className="flex-1 gap-2">
+                                            <Gift className="size-4" />
+                                            Rewards
                                         </Button>
                                     </div>
                                 </DropdownMenuContent>

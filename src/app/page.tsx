@@ -102,7 +102,7 @@ import {
   calculateTokenReload,
   readTokenBalances,
 } from '@/lib/tokens';
-import { TokenBalanceChips, TokenSpendPreview, TokenWalletBreakdown } from '@/components/token-wallet-display';
+import { TokenBalanceChips, TokenSpendPreview } from '@/components/token-wallet-display';
 import {
   buildKindergartenTemplateFields,
   getDefaultSchoolYearStartDate,
@@ -2739,6 +2739,7 @@ const formatPolishedName = (name: string): string => {
           onReloadTokens={() => setIsTokenReloadOpen(true)}
           onShareTokens={() => setIsTokenShareOpen(true)}
           onOpenTokenHistory={handleOpenTokenHistory}
+          onOpenReferralRewards={handleOpenReferralRewards}
           onResetAccount={handleAccountReset}
         />
       )}
@@ -3394,65 +3395,39 @@ const formatPolishedName = (name: string): string => {
                   </div>
                 </div>
 
-                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                  <Card className="border-primary/15 shadow-lg shadow-primary/5">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <FileText className="size-5 text-primary" />
-                        Continue Last Work
-                      </CardTitle>
-                      <CardDescription>{hasGeneratorDraft ? currentStepLabel : 'Start by uploading one or more SF1 files.'}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border bg-muted/30 p-4">
-                          <p className="text-xs text-muted-foreground">Files</p>
-                          <p className="mt-1 text-2xl font-bold">{filesData.length || pendingFiles.length}</p>
-                        </div>
-                        <div className="rounded-2xl border bg-muted/30 p-4">
-                          <p className="text-xs text-muted-foreground">Selected learners</p>
-                          <p className="mt-1 text-2xl font-bold">{totalSelectedStudents}</p>
-                        </div>
-                        <div className="rounded-2xl border bg-muted/30 p-4">
-                          <p className="text-xs text-muted-foreground">Can generate now</p>
-                          <p className="mt-1 text-2xl font-bold">{generationStudentLimit}</p>
-                        </div>
+                <Card className="border-primary/15 shadow-lg shadow-primary/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <FileText className="size-5 text-primary" />
+                      Continue Last Work
+                    </CardTitle>
+                    <CardDescription>{hasGeneratorDraft ? currentStepLabel : 'Start by uploading one or more SF1 files.'}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border bg-muted/30 p-4">
+                        <p className="text-xs text-muted-foreground">Files</p>
+                        <p className="mt-1 text-2xl font-bold">{filesData.length || pendingFiles.length}</p>
                       </div>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button className="flex-1" onClick={() => setActiveWorkspaceSection('generator')}>
-                          {hasGeneratorDraft ? 'Resume Generator' : 'Start Generator'}
-                        </Button>
-                        {hasGeneratorDraft && (
-                          <Button variant="outline" onClick={() => { resetState(); clearStateFromLocalStorage(); }}>Clear Draft</Button>
-                        )}
+                      <div className="rounded-2xl border bg-muted/30 p-4">
+                        <p className="text-xs text-muted-foreground">Selected learners</p>
+                        <p className="mt-1 text-2xl font-bold">{totalSelectedStudents}</p>
                       </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="shadow-lg shadow-primary/5">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <Coins className="size-5 text-primary" />
-                        Token Wallet
-                      </CardTitle>
-                      <CardDescription>Bronze free and reward tokens are used first. Gold reload tokens can be shared.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="rounded-2xl border bg-primary/5 p-4">
-                        <TokenWalletBreakdown wallet={tokenWallet} />
-                        <div className="mt-3">
-                          <Badge variant="outline">{allowableStudentForms} form(s)</Badge>
-                        </div>
+                      <div className="rounded-2xl border bg-muted/30 p-4">
+                        <p className="text-xs text-muted-foreground">Can generate now</p>
+                        <p className="mt-1 text-2xl font-bold">{generationStudentLimit}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button onClick={() => setIsTokenReloadOpen(true)}>Reload</Button>
-                        <Button variant="outline" onClick={handleOpenTokenHistory}>Activity</Button>
-                        <Button variant="outline" onClick={() => setIsTokenShareOpen(true)}>Share</Button>
-                        <Button variant="outline" onClick={handleOpenReferralRewards}>Rewards</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button className="flex-1" onClick={() => setActiveWorkspaceSection('generator')}>
+                        {hasGeneratorDraft ? 'Resume Generator' : 'Start Generator'}
+                      </Button>
+                      {hasGeneratorDraft && (
+                        <Button variant="outline" onClick={() => { resetState(); clearStateFromLocalStorage(); }}>Clear Draft</Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
 
                 <div className="grid gap-4 xl:grid-cols-3">
                   <Card className="xl:col-span-1">
