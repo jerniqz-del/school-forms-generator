@@ -2671,8 +2671,6 @@ const formatPolishedName = (name: string): string => {
 
   const templatesAreSelected = uniqueGradeLevels.every(gl => !!selectedTemplateUrls[gl]);
   const isSF9ActionDisabled = isActionDisabled || !templatesAreSelected || hasIncompleteSpecialClass;
-  const currentStepLabel = step === 1 ? 'Upload SF1 files' : step === 2 ? 'Select learners' : 'Finalize and generate';
-  const hasGeneratorDraft = pendingFiles.length > 0 || filesData.length > 0 || totalSelectedStudents > 0;
   const latestTokenHistory = tokenHistory.slice(0, 3);
 
   const handleGenerateAnother = () => {
@@ -3394,40 +3392,6 @@ const formatPolishedName = (name: string): string => {
                     </div>
                   </div>
                 </div>
-
-                <Card className="border-primary/15 shadow-lg shadow-primary/5">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <FileText className="size-5 text-primary" />
-                      Continue Last Work
-                    </CardTitle>
-                    <CardDescription>{hasGeneratorDraft ? currentStepLabel : 'Start by uploading one or more SF1 files.'}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl border bg-muted/30 p-4">
-                        <p className="text-xs text-muted-foreground">Files</p>
-                        <p className="mt-1 text-2xl font-bold">{filesData.length || pendingFiles.length}</p>
-                      </div>
-                      <div className="rounded-2xl border bg-muted/30 p-4">
-                        <p className="text-xs text-muted-foreground">Selected learners</p>
-                        <p className="mt-1 text-2xl font-bold">{totalSelectedStudents}</p>
-                      </div>
-                      <div className="rounded-2xl border bg-muted/30 p-4">
-                        <p className="text-xs text-muted-foreground">Can generate now</p>
-                        <p className="mt-1 text-2xl font-bold">{generationStudentLimit}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button className="flex-1" onClick={() => setActiveWorkspaceSection('generator')}>
-                        {hasGeneratorDraft ? 'Resume Generator' : 'Start Generator'}
-                      </Button>
-                      {hasGeneratorDraft && (
-                        <Button variant="outline" onClick={() => { resetState(); clearStateFromLocalStorage(); }}>Clear Draft</Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
 
                 <div className="grid gap-4 xl:grid-cols-3">
                   <Card className="xl:col-span-1">
