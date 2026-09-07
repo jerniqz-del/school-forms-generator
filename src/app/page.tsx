@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, Store } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag } from 'lucide-react';
 import { MarketplaceSection } from '@/components/marketplace/marketplace-section';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -75,7 +75,6 @@ import { useUser as useAuthUser } from '@/firebase/auth/use-user';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { PricedDocumentType } from '@/lib/pricing';
-import { APP_VERSION_LABEL } from '@/lib/app-version';
 import {
   formatGradeTemplateLabel,
   isSpedCoverTemplate,
@@ -3347,21 +3346,6 @@ const formatPolishedName = (name: string): string => {
                 <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
             <div className="flex h-full flex-col gap-4 overflow-y-auto rounded-2xl border bg-card/95 p-4 shadow-lg shadow-primary/5">
-              <div className="rounded-2xl bg-primary p-4 text-primary-foreground shadow-md shadow-primary/25">
-                <div className="flex items-center gap-3">
-                  <span className="flex size-11 items-center justify-center rounded-xl bg-white/15">
-                    <Store className="size-5" />
-                  </span>
-                  <div>
-                    <p className="flex items-center gap-2 text-lg font-bold leading-tight">
-                      TeachTiangge
-                      <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">{APP_VERSION_LABEL}</span>
-                    </p>
-                    <p className="text-xs leading-snug text-primary-foreground/80">Your go to digital store for teaching related materials.</p>
-                  </div>
-                </div>
-              </div>
-
               <nav className="space-y-1" aria-label="TeachTiangge workspace">
                 {[
                   { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
