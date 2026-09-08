@@ -7,6 +7,8 @@ export const TOKEN_RELOAD_BONUS_RATE = 0.05;
 export const REFERRAL_REWARD_TOKENS = 20;
 export const GENERATION_REWARD_INTERVAL = 50;
 export const GENERATION_REWARD_TOKENS = 10;
+export const GENERATION_REWARD_GOLD_INTERVAL_TOKENS =
+  GENERATION_REWARD_INTERVAL * TOKENS_PER_STUDENT_FORM;
 
 export type TokenBalances = {
   tokens: number;
@@ -153,6 +155,21 @@ export function creditShareableTokens(wallet: WalletLike, amount: number): Token
     tokens: balances.tokens + credited,
     freeTokens: balances.freeTokens,
     shareableTokens: balances.shareableTokens + credited,
+  };
+}
+
+export function generationRewardFromGoldSpend(previousGoldSpent: number, goldSpentNow: number) {
+  const previous = asNonNegativeInt(previousGoldSpent);
+  const spentNow = asNonNegativeInt(goldSpentNow);
+  const nextGoldSpent = previous + spentNow;
+  const previousMilestones = Math.floor(previous / GENERATION_REWARD_GOLD_INTERVAL_TOKENS);
+  const nextMilestones = Math.floor(nextGoldSpent / GENERATION_REWARD_GOLD_INTERVAL_TOKENS);
+
+  return {
+    rewardTokens: Math.max(0, nextMilestones - previousMilestones) * GENERATION_REWARD_TOKENS,
+    previousGoldSpent: previous,
+    nextGoldSpent,
+    goldPaidGenerations: Math.floor(nextGoldSpent / TOKENS_PER_STUDENT_FORM),
   };
 }
 

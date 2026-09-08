@@ -99,7 +99,7 @@ export function TokenWalletBreakdown({
         <TokenBalanceChips wallet={balances} />
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Bronze tokens are free and reward tokens. They are used first and cannot be shared. Gold tokens come from reloads and can be shared.
+        Bronze tokens are free and reward tokens. They are used first and cannot be shared. Gold tokens come from reloads and can be shared. Generation rewards count only gold tokens spent on student forms.
       </p>
     </div>
   );
@@ -108,9 +108,11 @@ export function TokenWalletBreakdown({
 export function TokenSpendPreview({
   wallet,
   cost,
+  showGenerationRewardHint = false,
 }: {
   wallet?: WalletLike;
   cost: number;
+  showGenerationRewardHint?: boolean;
 }) {
   const balances = readTokenBalances(wallet);
   const spend = splitTokenSpend(balances.freeTokens, balances.shareableTokens, cost);
@@ -133,6 +135,11 @@ export function TokenSpendPreview({
           <span>Still needed</span>
           <span>{spend.uncovered}</span>
         </div>
+      )}
+      {showGenerationRewardHint && (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Only gold tokens used for student forms count toward generation rewards.
+        </p>
       )}
     </div>
   );
