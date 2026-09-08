@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, UserPlus, Users } from 'lucide-react';
 import { MarketplaceSection } from '@/components/marketplace/marketplace-section';
 import { MarketplaceCartButton, MarketplaceCartProvider } from '@/components/marketplace/marketplace-cart';
 
@@ -104,6 +104,14 @@ import {
   readTokenBalances,
 } from '@/lib/tokens';
 import { TokenBalanceChips, TokenSpendPreview } from '@/components/token-wallet-display';
+import { AddClassDialog, AddLearnerDialog } from '@/components/manual-learners-dialogs';
+import {
+  createManualClassFileName,
+  createManualClassId,
+  isManualClassId,
+  type ManualClassInput,
+  type ManualLearnerDraft,
+} from '@/lib/manual-learners';
 import {
   buildKindergartenTemplateFields,
   getDefaultSchoolYearStartDate,
@@ -880,6 +888,8 @@ export default function Home() {
 
   const [promoCode, setPromoCode] = useState('');
   const [isPromoApplied, setIsPromoApplied] = useState(false);
+  const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+  const [addLearnerFileId, setAddLearnerFileId] = useState<string | null>(null);
   
   const { isDisclaimerOpen, setIsDisclaimerOpen, disclaimerAgreed, setDisclaimerAgreed } = useDisclaimer();
   
@@ -1889,8 +1899,10 @@ const formatPolishedName = (name: string): string => {
         }
     }
 
-    setFilesData(processedFiles);
-    setOpenAccordions(processedFiles.map(f => f.id));
+    const retainedManualClasses = filesData.filter(fileData => isManualClassId(fileData.id));
+    const nextFilesData = [...retainedManualClasses, ...processedFiles];
+    setFilesData(nextFilesData);
+    setOpenAccordions(nextFilesData.map(f => f.id));
     
     if(processedFiles.length > 0) {
       setPendingFiles([]);
@@ -1900,7 +1912,7 @@ const formatPolishedName = (name: string): string => {
           title: "Files Processed Successfully",
           description: `${processedFiles.length} file(s) extracted.`,
       });
-      autoSelectTemplates(processedFiles);
+      autoSelectTemplates(nextFilesData);
     }
     
     setIsProcessing(false);
@@ -2483,6 +2495,8 @@ const formatPolishedName = (name: string): string => {
     setPromoCode('');
     setIsPromoApplied(false);
     setActiveReservationId(null);
+    setIsAddClassOpen(false);
+    setAddLearnerFileId(null);
   };
 
   const handleAccountReset = () => {
@@ -2554,6 +2568,83 @@ const formatPolishedName = (name: string): string => {
       }
       return { ...prevInfo, [field]: value };
     });
+  };
+
+  const handleAddManualClass = (input: ManualClassInput) => {
+    const section = toProperCase(input.section.trim());
+    const id = createManualClassId(filesData.map(fileData => fileData.id));
+    const fileName = createManualClassFileName(input.gradeLevel, section);
+    const nextFile: FileData = {
+      id,
+      fileName,
+      studentData: [],
+      fileInfo: {
+        gradeLevel: input.gradeLevel,
+        section,
+        adviser: input.adviser.trim(),
+        school: sharedInfo.school,
+        district: sharedInfo.district,
+        division: sharedInfo.division,
+        region: sharedInfo.region,
+        address: sharedInfo.address,
+        municipality: sharedInfo.municipality,
+        schoolYear: sharedInfo.schoolYear,
+      },
+      selectedRows: new Set(),
+      searchTerm: '',
+    };
+    const nextFilesData = [...filesData, nextFile];
+    setFilesData(nextFilesData);
+    setOpenAccordions(prev => (prev.includes(id) ? prev : [...prev, id]));
+    setStep(2);
+    setActiveWorkspaceSection('generator');
+    autoSelectTemplates(nextFilesData);
+    toast({
+      variant: 'success',
+      title: 'Class added',
+      description: `${fileName} is ready. Add learners to this class.`,
+    });
+  };
+
+  const handleAddManualLearner = (fileId: string, learner: ManualLearnerDraft) => {
+    setFilesData(prev => prev.map(fileData => {
+      if (fileData.id !== fileId) return fileData;
+      const student: StudentRecord = {
+        ...learner,
+        Name: formatPolishedName(learner.Name) || learner.Name,
+        Barangay: learner.Barangay.toUpperCase(),
+        Municipality: learner.Municipality.toUpperCase(),
+        Province: learner.Province.toUpperCase(),
+        FatherName: learner.FatherName ? formatPolishedName(learner.FatherName) : '',
+        MotherName: learner.MotherName ? formatPolishedName(learner.MotherName) : '',
+      };
+      const selectedRows = new Set(fileData.selectedRows);
+      selectedRows.add(student.LRN);
+      return {
+        ...fileData,
+        studentData: [...fileData.studentData, student],
+        selectedRows,
+        searchTerm: '',
+      };
+    }));
+    toast({
+      variant: 'success',
+      title: 'Learner added',
+      description: `${formatPolishedName(learner.Name) || learner.Name} was added and selected.`,
+    });
+  };
+
+  const handleRemoveLearner = (fileId: string, lrn: string) => {
+    setFilesData(prev => prev.map(fileData => {
+      if (fileData.id !== fileId) return fileData;
+      const selectedRows = new Set(fileData.selectedRows);
+      selectedRows.delete(lrn);
+      return {
+        ...fileData,
+        studentData: fileData.studentData.filter(student => student.LRN !== lrn),
+        selectedRows,
+      };
+    }));
   };
 
   const handleStudentInfoChange = (
@@ -2694,6 +2785,7 @@ const formatPolishedName = (name: string): string => {
   }
 
   const uniqueGradeLevels = [...new Set(filesData.map(f => getTemplateGradeKey(f.fileInfo)))];
+  const addLearnerFile = filesData.find(fileData => fileData.id === addLearnerFileId) || null;
   const hasKindergartenFiles = filesData.some(file => file.fileInfo.gradeLevel === 'Kinder');
   const hasSpedFiles = filesData.some(file => isSpedGrade(file.fileInfo.gradeLevel));
   const totalSelectedStudents = filesData.reduce((sum, file) => sum + file.selectedRows.size, 0);
@@ -2830,6 +2922,27 @@ const formatPolishedName = (name: string): string => {
               </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <AddClassDialog
+          open={isAddClassOpen}
+          onOpenChange={setIsAddClassOpen}
+          onAdd={handleAddManualClass}
+        />
+        <AddLearnerDialog
+          open={!!addLearnerFileId}
+          onOpenChange={(open) => {
+            if (!open) setAddLearnerFileId(null);
+          }}
+          existingLrns={addLearnerFile?.studentData.map(student => student.LRN) || []}
+          classLabel={
+            addLearnerFile
+              ? `${addLearnerFile.fileInfo.gradeLevel} - ${addLearnerFile.fileInfo.section}`
+              : 'this class'
+          }
+          onAdd={(learner) => {
+            if (addLearnerFileId) handleAddManualLearner(addLearnerFileId, learner);
+          }}
+        />
 
         <AlertDialog open={isDisclaimerOpen} onOpenChange={setIsDisclaimerOpen}>
             <AlertDialogContent className="max-w-3xl">
@@ -3548,7 +3661,7 @@ const formatPolishedName = (name: string): string => {
                         </div>
                         <div>
                             <CardTitle>Upload School Form 1 Files</CardTitle>
-                            <CardDescription>Select one or more SF1 files to begin.</CardDescription>
+                            <CardDescription>Select SF1 files, or add a class and learners manually.</CardDescription>
                         </div>
                         </div>
                     </CardHeader>
@@ -3580,6 +3693,25 @@ const formatPolishedName = (name: string): string => {
                                 <p className="text-sm text-muted-foreground">XLS or XLSX files</p>
                             </label>
                         </div>
+
+                        <div className="relative my-6">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-card px-2 text-muted-foreground">or</span>
+                            </div>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => setIsAddClassOpen(true)}
+                            disabled={isProcessing}
+                        >
+                            <Users className="mr-2 size-4" />
+                            Add class without SF1
+                        </Button>
 
                         {pendingFiles.length > 0 && (
                             <div className="mt-6">
@@ -3617,8 +3749,8 @@ const formatPolishedName = (name: string): string => {
                     <div className="flex items-center gap-3">
                         <PackageIcon className="size-6 text-primary" />
                         <div>
-                            <p className="font-medium">{filesData.length} file(s) processed</p>
-                            <p className="text-xs text-muted-foreground">{totalSelectedStudents} total student(s) selected</p>
+                            <p className="font-medium">{filesData.length} class(es)</p>
+                            <p className="text-xs text-muted-foreground">{totalSelectedStudents} total learner(s) selected</p>
                         </div>
                     </div>
                     <Button variant="outline" size="sm" onClick={resetState} disabled={isProcessing}>
@@ -3631,14 +3763,20 @@ const formatPolishedName = (name: string): string => {
             <div className={cn(step === 2 ? 'block' : 'hidden')}>
                 <Card className="w-full shadow-lg border-primary/20">
                   <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary">
                         <Table className="size-6" />
                       </div>
                       <div>
-                        <CardTitle>Select Templates Data</CardTitle>
-                        <CardDescription>Review the data and select records for each file.</CardDescription>
+                        <CardTitle>Select Learners</CardTitle>
+                        <CardDescription>Review extracted records or add learners manually for each class.</CardDescription>
                       </div>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => setIsAddClassOpen(true)}>
+                      <Users className="mr-2 size-4" />
+                      Add class
+                    </Button>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -3727,6 +3865,13 @@ const formatPolishedName = (name: string): string => {
                                             )}
                                           </div>
                                         )}
+                                        <Button
+                                            type="button"
+                                            onClick={() => setAddLearnerFileId(fileData.id)}
+                                        >
+                                           <UserPlus className="mr-2 size-4" />
+                                           Add learner
+                                        </Button>
                                         <Button 
                                             variant="outline"
                                             onClick={() => handleSelectAll(fileData.id, filteredStudents)}
@@ -3736,7 +3881,9 @@ const formatPolishedName = (name: string): string => {
                                     </div>
                                     {isSpedClass && (
                                       <p className="mb-4 text-xs text-muted-foreground">
-                                        This SF1 was detected as a SPED class. The SPED PRC cover is selected by default in the next step; switch to a regular grade template for inclusivized learners.
+                                        {isManualClassId(fileData.id)
+                                          ? 'This class is marked as SPED. The SPED PRC cover is selected by default in the next step; switch to a regular grade template for inclusivized learners.'
+                                          : 'This SF1 was detected as a SPED class. The SPED PRC cover is selected by default in the next step; switch to a regular grade template for inclusivized learners.'}
                                       </p>
                                     )}
                                     <div className="relative rounded-lg border max-h-[50vh] overflow-auto">
@@ -3763,6 +3910,7 @@ const formatPolishedName = (name: string): string => {
                                                 <TableHead className="min-w-[220px]">Mother&apos;s Name</TableHead>
                                               </>
                                             )}
+                                            <TableHead className="w-[70px] text-center"> </TableHead>
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -3799,12 +3947,26 @@ const formatPolishedName = (name: string): string => {
                                                     </TableCell>
                                                   </>
                                                 )}
+                                                <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
+                                                  <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleRemoveLearner(fileData.id, student.LRN)}
+                                                    aria-label={`Remove ${student.Name}`}
+                                                  >
+                                                    <Trash2 className="size-4" />
+                                                  </Button>
+                                                </TableCell>
                                               </TableRow>
                                             ))
                                           ) : (
                                             <TableRow>
-                                              <TableCell colSpan={isKindergarten ? 8 : 5} className="h-24 text-center">
-                                                No results found for &quot;{fileData.searchTerm}&quot;.
+                                              <TableCell colSpan={isKindergarten ? 9 : 6} className="h-24 text-center">
+                                                {fileData.studentData.length === 0
+                                                  ? 'No learners yet. Add a learner to this class.'
+                                                  : `No results found for "${fileData.searchTerm}".`}
                                               </TableCell>
                                             </TableRow>
                                           )}
