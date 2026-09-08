@@ -42,4 +42,22 @@ assert.equal((alreadyPlural.match(/\{\/students\}/g) || []).length, 1);
 assert.ok(alreadyPlural.indexOf('{#students}') < alreadyPlural.indexOf('{Name}'));
 assert.ok(alreadyPlural.indexOf('{Name}') < alreadyPlural.indexOf('{/students}'));
 
+const splitAcrossRuns = repairSpedCoverDocumentXml(`<?xml version="1.0"?><w:document><w:body>
+<w:tbl><w:tr><w:tc><w:p>
+<w:r><w:t>{#</w:t></w:r><w:r><w:t>students}</w:t></w:r><w:r><w:t>TEACHER'S REMARKS</w:t></w:r>
+</w:p></w:tc></w:tr></w:tbl>
+<w:p><w:r><w:t>{Name}</w:t></w:r></w:p>
+<w:p><w:r><w:t>{/student</w:t></w:r><w:r><w:t>s</w:t></w:r><w:r><w:t>}</w:t></w:r></w:p>
+<w:p><w:r><w:t>DAILY LIVING SKILLS DOMAIN</w:t></w:r></w:p>
+<w:sectPr><w:pgSz/></w:sectPr>
+</w:body></w:document>`);
+
+assert.equal(splitAcrossRuns.includes('{#</w:t>'), false);
+assert.equal(splitAcrossRuns.includes('{/student</w:t>'), false);
+assert.equal((splitAcrossRuns.match(/\{\#students\}/g) || []).length, 1);
+assert.equal((splitAcrossRuns.match(/\{\/students\}/g) || []).length, 1);
+assert.ok(splitAcrossRuns.indexOf('{#students}') < splitAcrossRuns.indexOf("TEACHER'S REMARKS"));
+assert.ok(splitAcrossRuns.indexOf("TEACHER'S REMARKS") < splitAcrossRuns.indexOf('{/students}'));
+assert.ok(splitAcrossRuns.indexOf('DAILY LIVING SKILLS DOMAIN') < splitAcrossRuns.indexOf('{/students}'));
+
 console.log('sped cover placeholder checks passed');
