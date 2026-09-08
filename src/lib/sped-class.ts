@@ -26,6 +26,34 @@ export function isSpedCoverTemplate(templateUrlOrName: string): boolean {
   return value.includes('sped') && value.includes('cover') && value.includes('.docx');
 }
 
+const STUDENT_LOOP_OPEN_XML = '<w:p><w:r><w:t>{#students}</w:t></w:r></w:p>';
+const STUDENT_LOOP_CLOSE_XML = '<w:p><w:r><w:t>{/students}</w:t></w:r></w:p>';
+
+export function repairSpedCoverDocumentXml(documentXml: string): string {
+  if (!documentXml || !/<w:body[^>]*>/.test(documentXml)) {
+    return documentXml;
+  }
+
+  let xml = documentXml
+    .replace(/\{#students?\}/g, '')
+    .replace(/\{\/students?\}/g, '')
+    .replace(/\{#(?:<[^>]+>)*students?\}/g, '')
+    .replace(/\{\/(?:<[^>]+>)*students?\}/g, '');
+
+  xml = xml.replace(/(<w:body[^>]*>)/, `$1${STUDENT_LOOP_OPEN_XML}`);
+
+  const openIdx = xml.indexOf(STUDENT_LOOP_OPEN_XML);
+  const sectIdx = xml.lastIndexOf('<w:sectPr');
+  const bodyCloseIdx = xml.lastIndexOf('</w:body>');
+  if (sectIdx !== -1 && sectIdx > openIdx && (bodyCloseIdx === -1 || sectIdx < bodyCloseIdx)) {
+    return `${xml.slice(0, sectIdx)}${STUDENT_LOOP_CLOSE_XML}${xml.slice(sectIdx)}`;
+  }
+  if (bodyCloseIdx !== -1 && bodyCloseIdx > openIdx) {
+    return `${xml.slice(0, bodyCloseIdx)}${STUDENT_LOOP_CLOSE_XML}${xml.slice(bodyCloseIdx)}`;
+  }
+  return xml;
+}
+
 export function formatGradeTemplateLabel(gradeLevel: string): string {
   if (gradeLevel === 'Kinder') return 'Kindergarten Template';
   if (isSpedGrade(gradeLevel)) return 'SPED Template';

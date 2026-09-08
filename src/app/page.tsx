@@ -81,6 +81,7 @@ import {
   isSpedCoverTemplate,
   isSpedGrade,
   looksLikeSpedSf1,
+  repairSpedCoverDocumentXml,
   SPED_CONTENT_PDF_NAME,
   SPED_CONTENT_PDF_URL,
   SPED_COVER_TEMPLATE_FALLBACKS,
@@ -374,7 +375,16 @@ async function buildSf9DocxBlob({
 
     // The KPRC template's opening loop is inside a table while its closing
     // tag is at document-body level. Move the opening marker to body level.
-    if (isKinderCoverTemplate || spedCoverTemplate) {
+    // SPED PRC Cover uses {#student}/{/student} around only the front panel;
+    // wrap the whole card with {#students} so remarks, logos, and inner pages
+    // repeat per learner.
+    if (spedCoverTemplate) {
+        const documentXmlFile = zip.file('word/document.xml');
+        const documentXml = documentXmlFile?.asText();
+        if (documentXml) {
+            zip.file('word/document.xml', repairSpedCoverDocumentXml(documentXml));
+        }
+    } else if (isKinderCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
         if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
@@ -469,6 +479,7 @@ async function buildSf9DocxBlob({
         section: formattedSection,
         specialsubject,
         students: exportData,
+        student: exportData,
         logo: croppedLogo ? 'logo' : undefined,
     };
 
