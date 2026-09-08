@@ -81,11 +81,13 @@ import {
   isSpedCoverTemplate,
   isSpedGrade,
   looksLikeSpedSf1,
+  shouldBundleSpedContentPdf,
   SPED_CONTENT_PDF_NAME,
   SPED_CONTENT_PDF_URL,
   SPED_COVER_TEMPLATE_FALLBACKS,
   SPED_COVER_TEMPLATE_NAME,
 } from '@/lib/sped-class';
+import { getPreferredTemplateNames, isSelectableA5Template } from '@/lib/paper-size-templates';
 import {
   getSpecialSubjectValue,
   getTemplateGradeKey,
@@ -570,6 +572,7 @@ const gradeToTemplateMap: { [key: string]: string } = {
 };
 
 const gradeTemplateFallbacks: { [key: string]: string[] } = {
+  'Kinder': ['Kinder Report Card.docx', 'Kinder PECD.docx'],
   'SPED': SPED_COVER_TEMPLATE_FALLBACKS,
   'Four - Special': ['Grade Four Special.docx', 'Grade Four-Special.docx'],
   'Five - Special': ['Grade Five Special.docx', 'Grade Five-Special.docx'],
@@ -662,37 +665,6 @@ const paperSizeRepos: { [key: string]: RepoConfig | null } = {
     'A5': CUSTOM_SIZE_TEMPLATE_REPO,
     'Custom': CUSTOM_SIZE_TEMPLATE_REPO,
 };
-
-const JHS_A5_TEMPLATE_NAMES = [
-  'JHS - A5.docx',
-  'JHS-A5.docx',
-  'JHS A5.docx',
-];
-
-function isA5TemplateFileName(fileName: string) {
-  return /a5/i.test(fileName);
-}
-
-function isJhsGradeLevel(gradeLevel: string) {
-  return /^(Seven|Eight|Nine|Ten)\b/.test(gradeLevel);
-}
-
-function getPreferredTemplateNames(gradeLevel: string, selectedPaperSize: string) {
-  if (selectedPaperSize === 'A5') {
-    if (isJhsGradeLevel(gradeLevel)) {
-      return JHS_A5_TEMPLATE_NAMES;
-    }
-    return [
-      `Grade ${gradeLevel} - A5.docx`,
-      `Grade ${gradeLevel} A5.docx`,
-    ];
-  }
-
-  return [
-    gradeToTemplateMap[gradeLevel],
-    ...(gradeTemplateFallbacks[gradeLevel] || []),
-  ].filter(Boolean);
-}
 
 const MAX_PREVIOUS_LOGOS = 5;
 const MAX_PREVIOUS_INFO = 5;
@@ -1366,7 +1338,7 @@ const handleGenerateSF9 = useCallback(async (
                 });
             }
 
-            if (isSpedCoverTemplate(templateUrl)) {
+            if (shouldBundleSpedContentPdf(fileData.fileInfo.gradeLevel, templateUrl)) {
                 setLoadingMessage(`Adding SPED content pages ${index + 1} of ${filesToGenerate.length}...`);
                 const contentPdf = await getSpedContentPdf();
                 generatedFiles.push({
@@ -1658,7 +1630,7 @@ const handleGenerateSF9 = useCallback(async (
         const docxFiles = files.filter(file => file.name.endsWith('.docx'));
         if (paperSize === 'A5') {
           const a5Files = docxFiles
-            .filter(file => isA5TemplateFileName(file.name))
+            .filter(file => isSelectableA5Template(file.name))
             .sort((a, b) => {
               const aIsJhs = /jhs/i.test(a.name) ? 0 : 1;
               const bIsJhs = /jhs/i.test(b.name) ? 0 : 1;
@@ -1710,7 +1682,12 @@ const handleGenerateSF9 = useCallback(async (
       processedFiles.forEach(fileData => {
           const gradeLevel = getTemplateGradeKey(fileData.fileInfo);
           if (!newSelectedUrls[gradeLevel]) {
-              const namesToTry = getPreferredTemplateNames(gradeLevel, paperSize);
+              const namesToTry = getPreferredTemplateNames(
+                gradeLevel,
+                paperSize,
+                gradeToTemplateMap,
+                gradeTemplateFallbacks
+              );
               const matchedTemplate = templates.find(t =>
                 namesToTry.some(name => name.toLowerCase() === t.name.toLowerCase())
               );
