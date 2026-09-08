@@ -29,16 +29,25 @@ export function isSpedCoverTemplate(templateUrlOrName: string): boolean {
 const STUDENT_LOOP_OPEN_XML = '<w:p><w:r><w:t>{#students}</w:t></w:r></w:p>';
 const STUDENT_LOOP_CLOSE_XML = '<w:p><w:r><w:t>{/students}</w:t></w:r></w:p>';
 
+function escapeRegexChar(character: string) {
+  return /[.*+?^${}()|[\]\\/]/.test(character) ? `\\${character}` : character;
+}
+
+function stripPlaceholderEvenIfSplit(xml: string, placeholder: string) {
+  const betweenXmlTags = '(?:<[^>]+>)*';
+  const pattern = placeholder.split('').map(escapeRegexChar).join(betweenXmlTags);
+  return xml.replace(new RegExp(pattern, 'g'), '');
+}
+
 export function repairSpedCoverDocumentXml(documentXml: string): string {
   if (!documentXml || !/<w:body[^>]*>/.test(documentXml)) {
     return documentXml;
   }
 
-  let xml = documentXml
-    .replace(/\{#students?\}/g, '')
-    .replace(/\{\/students?\}/g, '')
-    .replace(/\{#(?:<[^>]+>)*students?\}/g, '')
-    .replace(/\{\/(?:<[^>]+>)*students?\}/g, '');
+  let xml = documentXml;
+  for (const placeholder of ['{#students}', '{/students}', '{#student}', '{/student}']) {
+    xml = stripPlaceholderEvenIfSplit(xml, placeholder);
+  }
 
   xml = xml.replace(/(<w:body[^>]*>)/, `$1${STUDENT_LOOP_OPEN_XML}`);
 
