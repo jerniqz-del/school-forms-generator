@@ -54,6 +54,10 @@ export function repairSpedCoverDocumentXml(documentXml: string): string {
   return xml;
 }
 
+export function shouldBundleSpedContentPdf(gradeLevel: string, templateUrlOrName: string): boolean {
+  return isSpedGrade(gradeLevel) || isSpedCoverTemplate(templateUrlOrName);
+}
+
 export function formatGradeTemplateLabel(gradeLevel: string): string {
   if (gradeLevel === 'Kinder') return 'Kindergarten Template';
   if (isSpedGrade(gradeLevel)) return 'SPED Template';
