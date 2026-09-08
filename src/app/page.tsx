@@ -276,6 +276,7 @@ type TokenHistoryItem = {
   amountPesos: number | null;
   studentCount: number | null;
   completedGenerations: number | null;
+  goldPaidGenerations: number | null;
   recipientEmail: string | null;
   referrerUid: string | null;
   referredUid: string | null;
@@ -797,6 +798,7 @@ function getTokenHistoryTitle(type: string) {
 function getTokenHistoryDetail(item: TokenHistoryItem) {
   if (item.type === 'reload' && item.amountPesos) return `Reloaded PHP ${item.amountPesos}.`;
   if (item.type === 'generation' && item.studentCount) return `${item.studentCount} student form(s) generated.`;
+  if (item.type === 'generation_reward' && item.goldPaidGenerations) return `Reward for reaching ${item.goldPaidGenerations} gold-paid student form(s).`;
   if (item.type === 'generation_reward' && item.completedGenerations) return `Reward for reaching ${item.completedGenerations} generated student form(s).`;
   if (item.type === 'share_sent' && item.recipientEmail) return `Shared with ${item.recipientEmail}.`;
   if (item.type === 'share_received') return 'Received from another registered user.';
@@ -2838,7 +2840,7 @@ const formatPolishedName = (name: string): string => {
         variant: 'success',
         title: rewardTokens > 0 ? 'Generation Reward Added' : 'Tokens Consumed',
         description: rewardTokens > 0
-          ? `Your generation has been completed. ${rewardTokens} bronze bonus token(s) were added.`
+          ? `Your generation has been completed. ${rewardTokens} bronze bonus token(s) were added for gold-paid forms.`
           : 'Your generation has been completed.',
       });
     } catch (error: any) {
@@ -2967,6 +2969,7 @@ const formatPolishedName = (name: string): string => {
 
                         <h3 className="font-semibold text-foreground">4. Tokens, Payments, Referrals, and Sharing</h3>
                         <p>Each selected student form generation consumes tokens. Bronze tokens are free and reward tokens: they are used first and cannot be shared. Gold tokens come from reloads, including reload bonuses, and can be shared with other teachers. Marketplace checkout uses the same order: bronze first, then gold.</p>
+                        <p>Generation rewards are bronze tokens granted only for gold tokens spent on student form generation. Bronze spend and marketplace purchases do not count toward generation-reward progress.</p>
                         <p>Tokens are reserved before generation and consumed only after you confirm that the file was downloaded. Failed generation attempts release reserved tokens. Token reload payments are final once credited to your account.</p>
 
                         <p className="font-bold">By using this app, you agree to these terms and accept full responsibility for the use and verification of all generated data.</p>
@@ -3171,7 +3174,7 @@ const formatPolishedName = (name: string): string => {
                           </div>
                           {!isPromoApplied && requiredTokens > 0 && (
                             <div className="border-t pt-2">
-                              <TokenSpendPreview wallet={tokenWallet} cost={requiredTokens} />
+                              <TokenSpendPreview wallet={tokenWallet} cost={requiredTokens} showGenerationRewardHint />
                             </div>
                           )}
 

@@ -92,6 +92,10 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
         });
       }
 
+      if (wallet.goldGenerationTokensSpent == null) {
+        updateData.goldGenerationTokensSpent = 0;
+      }
+
       transaction.set(walletRef, updateData, { merge: true });
       return;
     }
@@ -159,6 +163,7 @@ async function ensureWallet(uid: string, email?: string | null, referralCode?: s
       lifetimeReferralRewards: referredBy ? REFERRAL_REWARD_TOKENS : 0,
       lifetimeGenerationRewards: 0,
       completedGenerations: 0,
+      goldGenerationTokensSpent: 0,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

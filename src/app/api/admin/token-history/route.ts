@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
           amountPesos: typeof item.amountPesos === 'number' ? item.amountPesos : null,
           studentCount: typeof item.studentCount === 'number' ? item.studentCount : null,
           completedGenerations: typeof item.completedGenerations === 'number' ? item.completedGenerations : null,
+          goldPaidGenerations: typeof item.goldPaidGenerations === 'number' ? item.goldPaidGenerations : null,
           recipientEmail: item.recipientEmail || (item.uid ? userEmails.get(item.uid) : null) || null,
           adminUid: item.adminUid || null,
           adminEmail: item.adminEmail || null,

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFieldValue, getAdminFirestore, requireUserIdFromRequest } from '@/lib/firebase-admin';
 import {
-  GENERATION_REWARD_INTERVAL,
-  GENERATION_REWARD_TOKENS,
   applyTokenSpend,
   calculateTokenCost,
   creditFreeTokens,
+  generationRewardFromGoldSpend,
   readTokenBalances,
   reservationReleaseAmounts,
 } from '@/lib/tokens';
@@ -86,11 +85,12 @@ export async function POST(request: NextRequest) {
           const walletSnap = await transaction.get(walletRef);
           const wallet = walletSnap.data() || {};
           const studentCountValue = Number(reservation.studentCount || 0);
-          const previousGenerations = Number(wallet.completedGenerations || 0);
-          const nextGenerations = previousGenerations + studentCountValue;
-          const previousMilestones = Math.floor(previousGenerations / GENERATION_REWARD_INTERVAL);
-          const nextMilestones = Math.floor(nextGenerations / GENERATION_REWARD_INTERVAL);
-          rewardTokens = Math.max(0, nextMilestones - previousMilestones) * GENERATION_REWARD_TOKENS;
+          const goldSpentNow = release.shareableTokens;
+          const reward = generationRewardFromGoldSpend(
+            wallet.goldGenerationTokensSpent,
+            goldSpentNow,
+          );
+          rewardTokens = reward.rewardTokens;
           const rewarded = creditFreeTokens(wallet, rewardTokens);
 
           transaction.update(walletRef, {
@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
             spentTokens: FieldValue.increment(tokens),
             spentFreeTokens: FieldValue.increment(release.freeTokens),
             spentShareableTokens: FieldValue.increment(release.shareableTokens),
+            goldGenerationTokensSpent: reward.nextGoldSpent,
             completedGenerations: FieldValue.increment(studentCountValue),
             lifetimeGenerationRewards: FieldValue.increment(rewardTokens),
             updatedAt: FieldValue.serverTimestamp(),
@@ -124,7 +125,9 @@ export async function POST(request: NextRequest) {
               bronzeTokens: rewardTokens,
               goldTokens: 0,
               studentCount: studentCountValue,
-              completedGenerations: nextGenerations,
+              completedGenerations: reward.goldPaidGenerations,
+              goldPaidGenerations: reward.goldPaidGenerations,
+              goldGenerationTokensSpent: reward.nextGoldSpent,
               createdAt: FieldValue.serverTimestamp(),
             });
           }
