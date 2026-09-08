@@ -20,6 +20,14 @@ export function isJhsGradeLevel(gradeLevel: string) {
   return /^(Seven|Eight|Nine|Ten)\b/.test(gradeLevel);
 }
 
+export function isShsGradeLevel(gradeLevel: string) {
+  return /^(Eleven|Twelve)\b/.test(gradeLevel);
+}
+
+export function isShsTemplateFileName(fileName: string) {
+  return /^Grade (Eleven|Twelve|11|12)\b.*\.docx$/i.test(fileName);
+}
+
 export function isKinderTemplateFileName(fileName: string) {
   return /kinder|kprc|\bpecd\b/i.test(fileName);
 }
@@ -37,7 +45,8 @@ export function isSelectableA5Template(fileName: string) {
     isA5TemplateFileName(fileName) ||
     isSpedCoverTemplate(fileName) ||
     isKinderTemplateFileName(fileName) ||
-    isSpecialClassTemplateFileName(fileName)
+    isSpecialClassTemplateFileName(fileName) ||
+    isShsTemplateFileName(fileName)
   );
 }
 
@@ -61,6 +70,13 @@ export function getPreferredTemplateNames(
     }
     if (isJhsGradeLevel(gradeLevel)) {
       return [...JHS_A5_TEMPLATE_NAMES];
+    }
+    if (isShsGradeLevel(gradeLevel)) {
+      return [
+        `Grade ${gradeLevel} - A5.docx`,
+        `Grade ${gradeLevel} A5.docx`,
+        ...mappedNames,
+      ];
     }
     return [`Grade ${gradeLevel} - A5.docx`, `Grade ${gradeLevel} A5.docx`];
   }

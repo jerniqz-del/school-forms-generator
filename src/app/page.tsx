@@ -88,7 +88,7 @@ import {
   SPED_COVER_TEMPLATE_FALLBACKS,
   SPED_COVER_TEMPLATE_NAME,
 } from '@/lib/sped-class';
-import { getPreferredTemplateNames, isSelectableA5Template } from '@/lib/paper-size-templates';
+import { getPreferredTemplateNames, isSelectableA5Template, isShsTemplateFileName } from '@/lib/paper-size-templates';
 import {
   getSpecialSubjectValue,
   getTemplateGradeKey,
@@ -604,6 +604,8 @@ const gradeTemplateFallbacks: { [key: string]: string[] } = {
   'Nine (Year III)': ['Grade Nine (Year III).docx', 'Grade Nine (Year 3).docx'],
   'Ten': ['Grade Ten (Year IV).docx', 'Grade Ten (Year 4).docx'],
   'Ten (Year IV)': ['Grade Ten (Year IV).docx', 'Grade Ten (Year 4).docx'],
+  'Eleven': ['Grade 11.docx', 'Grade XI.docx', 'Grade Eleven (Year V).docx'],
+  'Twelve': ['Grade 12.docx', 'Grade XII.docx', 'Grade Twelve (Year VI).docx'],
 };
 
 function normalizeSf1GradeLevel(
@@ -1665,7 +1667,8 @@ const handleGenerateSF9 = useCallback(async (
         const extraSpecialTemplates = docxFiles.filter(file =>
           SPECIAL_TEMPLATE_FILE_NAMES.includes(file.name) ||
           /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name) ||
-          isSpedCoverTemplate(file.name)
+          isSpedCoverTemplate(file.name) ||
+          isShsTemplateFileName(file.name)
         );
 
         const availableMasterFiles = [
