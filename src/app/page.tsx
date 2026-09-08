@@ -656,11 +656,43 @@ function normalizeSf1GradeLevel(
   return gradeValue;
 }
 
+const CUSTOM_SIZE_TEMPLATE_REPO: RepoConfig = { user: 'jerniqz-del', repo: 'schoolform9' };
 const paperSizeRepos: { [key: string]: RepoConfig | null } = {
     'A4': null,
-    'A5': null,
-    'Custom': { user: 'jerniqz-del', repo: 'schoolform9' },
+    'A5': CUSTOM_SIZE_TEMPLATE_REPO,
+    'Custom': CUSTOM_SIZE_TEMPLATE_REPO,
 };
+
+const JHS_A5_TEMPLATE_NAMES = [
+  'JHS - A5.docx',
+  'JHS-A5.docx',
+  'JHS A5.docx',
+];
+
+function isA5TemplateFileName(fileName: string) {
+  return /a5/i.test(fileName);
+}
+
+function isJhsGradeLevel(gradeLevel: string) {
+  return /^(Seven|Eight|Nine|Ten)\b/.test(gradeLevel);
+}
+
+function getPreferredTemplateNames(gradeLevel: string, selectedPaperSize: string) {
+  if (selectedPaperSize === 'A5') {
+    if (isJhsGradeLevel(gradeLevel)) {
+      return JHS_A5_TEMPLATE_NAMES;
+    }
+    return [
+      `Grade ${gradeLevel} - A5.docx`,
+      `Grade ${gradeLevel} A5.docx`,
+    ];
+  }
+
+  return [
+    gradeToTemplateMap[gradeLevel],
+    ...(gradeTemplateFallbacks[gradeLevel] || []),
+  ].filter(Boolean);
+}
 
 const MAX_PREVIOUS_LOGOS = 5;
 const MAX_PREVIOUS_INFO = 5;
@@ -1624,6 +1656,19 @@ const handleGenerateSF9 = useCallback(async (
         
         const files: TemplateFile[] = await response.json();
         const docxFiles = files.filter(file => file.name.endsWith('.docx'));
+        if (paperSize === 'A5') {
+          const a5Files = docxFiles
+            .filter(file => isA5TemplateFileName(file.name))
+            .sort((a, b) => {
+              const aIsJhs = /jhs/i.test(a.name) ? 0 : 1;
+              const bIsJhs = /jhs/i.test(b.name) ? 0 : 1;
+              if (aIsJhs !== bIsJhs) return aIsJhs - bIsJhs;
+              return a.name.localeCompare(b.name);
+            });
+          setTemplates(a5Files);
+          return;
+        }
+
         const extraSpecialTemplates = docxFiles.filter(file =>
           SPECIAL_TEMPLATE_FILE_NAMES.includes(file.name) ||
           /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name) ||
@@ -1665,10 +1710,7 @@ const handleGenerateSF9 = useCallback(async (
       processedFiles.forEach(fileData => {
           const gradeLevel = getTemplateGradeKey(fileData.fileInfo);
           if (!newSelectedUrls[gradeLevel]) {
-              const namesToTry = [
-                gradeToTemplateMap[gradeLevel],
-                ...(gradeTemplateFallbacks[gradeLevel] || []),
-              ].filter(Boolean);
+              const namesToTry = getPreferredTemplateNames(gradeLevel, paperSize);
               const matchedTemplate = templates.find(t =>
                 namesToTry.some(name => name.toLowerCase() === t.name.toLowerCase())
               );
@@ -1687,7 +1729,12 @@ const handleGenerateSF9 = useCallback(async (
               return hasChanges ? { ...prev, ...newSelectedUrls } : prev;
           });
       }
-  }, [templates]);
+  }, [paperSize, templates]);
+
+  useEffect(() => {
+    if (filesData.length === 0 || templates.length === 0) return;
+    autoSelectTemplates(filesData);
+  }, [autoSelectTemplates, templates]);
 
 
   const toProperCase = (str: string) => {
