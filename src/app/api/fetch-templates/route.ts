@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     // Note: No token is used here, so it relies on public access and default rate limits.
     const response = await fetch(url, {
+        cache: 'no-store',
         headers: {
             'Accept': 'application/vnd.github.v3+json',
         }

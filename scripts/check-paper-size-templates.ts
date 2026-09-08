@@ -16,18 +16,22 @@ const gradeToTemplateMap: Record<string, string> = {
   Four: 'Grade Four.docx',
   'Four - Special': 'Grade Four - Special.docx',
   'Seven (Year I)': 'Grade Seven.docx',
+  Eleven: 'Grade Eleven.docx',
 };
 
 const gradeTemplateFallbacks: Record<string, string[]> = {
   SPED: SPED_COVER_TEMPLATE_FALLBACKS,
   'Four - Special': ['Grade Four Special.docx', 'Grade Four-Special.docx'],
   Kinder: ['Kinder Report Card.docx', 'Kinder PECD.docx'],
+  Eleven: ['Grade 11.docx', 'Grade XI.docx', 'Grade Eleven (Year V).docx'],
 };
 
 assert.equal(isSelectableA5Template('JHS - A5.docx'), true);
 assert.equal(isSelectableA5Template('SPED PRC - Cover.docx'), true);
 assert.equal(isSelectableA5Template('Latest KPRC and PECD Cover Page.docx'), true);
 assert.equal(isSelectableA5Template('Grade Four - Special.docx'), true);
+assert.equal(isSelectableA5Template('Grade Eleven.docx'), true);
+assert.equal(isSelectableA5Template('Grade 11.docx'), true);
 assert.equal(isSelectableA5Template('Grade One.docx'), false);
 assert.equal(isSelectableA5Template('Grade Seven.docx'), false);
 
@@ -51,6 +55,21 @@ assert.deepEqual(getPreferredTemplateNames('Four', 'A5', gradeToTemplateMap, gra
   'Grade Four - A5.docx',
   'Grade Four A5.docx',
 ]);
+assert.deepEqual(
+  getPreferredTemplateNames('Eleven', 'Custom', gradeToTemplateMap, gradeTemplateFallbacks),
+  ['Grade Eleven.docx', 'Grade 11.docx', 'Grade XI.docx', 'Grade Eleven (Year V).docx']
+);
+assert.deepEqual(
+  getPreferredTemplateNames('Eleven', 'A5', gradeToTemplateMap, gradeTemplateFallbacks),
+  [
+    'Grade Eleven - A5.docx',
+    'Grade Eleven A5.docx',
+    'Grade Eleven.docx',
+    'Grade 11.docx',
+    'Grade XI.docx',
+    'Grade Eleven (Year V).docx',
+  ]
+);
 assert.deepEqual(
   getPreferredTemplateNames('SPED', 'Custom', gradeToTemplateMap, gradeTemplateFallbacks),
   [SPED_COVER_TEMPLATE_NAME, ...SPED_COVER_TEMPLATE_FALLBACKS]
