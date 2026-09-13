@@ -389,6 +389,7 @@ async function buildSf9DocxBlob({
         .toLowerCase()
         .includes(KINDER_COVER_TEMPLATE_NAME.toLowerCase());
     const spedCoverTemplate = isSpedCoverTemplate(templateUrl);
+    const is55x85Template = paperSize === '5.5x8.5' && decodeURIComponent(templateUrl).toLowerCase().includes('grade five - 5.5x8.5.docx');
 
     // The KPRC template's opening loop is inside a table while its closing
     // tag is at document-body level. Move the opening marker to body level.
@@ -401,7 +402,18 @@ async function buildSf9DocxBlob({
         if (documentXml) {
             zip.file('word/document.xml', repairSpedCoverDocumentXml(documentXml));
         }
-    } else if (isKinderCoverTemplate) {
+    } else if (is55x85Template) {
+        const documentXmlFile = zip.file('word/document.xml');
+        const documentXml = documentXmlFile?.asText();
+        if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
+            const repairedXml = documentXml
+                .replace(/\{#(?:<[^>]+>)*students\}/, '')
+                .replace(
+                    /(<w:body[^>]*>)/,
+                    '$1<w:p><w:r><w:t>{#students}</w:t></w:r></w:p>'
+                );
+            zip.file('word/document.xml', repairedXml);
+        }    } else if (isKinderCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
         if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
