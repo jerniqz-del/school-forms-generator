@@ -6,6 +6,10 @@ import {
 } from './sped-class';
 import { SPECIAL_TEMPLATE_FILE_NAMES } from './special-class';
 
+export const FIVE_5_5X8_5_TEMPLATE_NAMES = [
+  'Grade Five - 5.5x8.5.docx',
+];
+
 export const JHS_A5_TEMPLATE_NAMES = [
   'JHS - A5.docx',
   'JHS-A5.docx',
@@ -60,6 +64,10 @@ export function getPreferredTemplateNames(
     gradeToTemplateMap[gradeLevel],
     ...(gradeTemplateFallbacks[gradeLevel] || []),
   ].filter((name): name is string => Boolean(name));
+
+  if (selectedPaperSize === '5.5x8.5' && gradeLevel === 'Five') {
+    return FIVE_5_5X8_5_TEMPLATE_NAMES;
+  }
 
   if (selectedPaperSize === 'A5') {
     if (isSpedGrade(gradeLevel)) {

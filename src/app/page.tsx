@@ -1684,7 +1684,8 @@ const handleGenerateSF9 = useCallback(async (
           SPECIAL_TEMPLATE_FILE_NAMES.includes(file.name) ||
           /^Grade (Four|Five|Six)\s*-\s*Special\.docx$/i.test(file.name) ||
           isSpedCoverTemplate(file.name) ||
-          isShsTemplateFileName(file.name)
+          isShsTemplateFileName(file.name) ||
+          (paperSize === '5.5x8.5' && /^Grade Five\s*-\s*5\.5x8\.5\.docx$/i.test(file.name))
         );
 
         const availableMasterFiles = [
