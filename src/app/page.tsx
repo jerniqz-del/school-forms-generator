@@ -89,6 +89,7 @@ import {
   SPED_COVER_TEMPLATE_NAME,
 } from '@/lib/sped-class';
 import { getPreferredTemplateNames, isSelectableA5Template, isShsTemplateFileName } from '@/lib/paper-size-templates';
+import { repair55x85DocumentXml } from '@/lib/sf9-55x85';
 import {
   getSpecialSubjectValue,
   getTemplateGradeKey,
@@ -405,15 +406,10 @@ async function buildSf9DocxBlob({
     } else if (is55x85Template) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
-        if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
-            const repairedXml = documentXml
-                .replace(/\{#(?:<[^>]+>)*students\}/, '')
-                .replace(
-                    /(<w:body[^>]*>\s*<w:p[^>]*>)/,
-                    '$1<w:r><w:t>{#students}</w:t></w:r>'
-                );
-            zip.file('word/document.xml', repairedXml);
-        }    } else if (isKinderCoverTemplate) {
+        if (documentXml) {
+            zip.file('word/document.xml', repair55x85DocumentXml(documentXml));
+        }
+    } else if (isKinderCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
         const documentXml = documentXmlFile?.asText();
         if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
