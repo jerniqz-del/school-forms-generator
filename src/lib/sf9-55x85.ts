@@ -1,7 +1,7 @@
 const STUDENTS_OPEN_TAG_PATTERN = /\{#(?:<[^>]+>)*students\}/g;
 
 const STUDENTS_OPEN_PARAGRAPH =
-  '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="1" w:lineRule="exact"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr><w:t>{#students}</w:t></w:r></w:p>';
+  '<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="0" w:lineRule="exact"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:vanish/><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr><w:t>{#students}</w:t></w:r></w:p>';
 
 function getParagraphText(paragraphXml: string): string {
   return paragraphXml
@@ -78,4 +78,37 @@ export function repair55x85DocumentXml(documentXml: string): string {
   );
 
   return normalizeNationalHeaderParagraph(repairedXml);
+}
+
+
+export function remove55x85LeadingSpacer(documentXml: string): string {
+  const bodyMatch = /<w:body[^>]*>/.exec(documentXml);
+  if (!bodyMatch) return documentXml;
+
+  const paragraphTagPattern = /<w:p(?:\s[^>]*)?>|<\/w:p>/g;
+  paragraphTagPattern.lastIndex = bodyMatch.index + bodyMatch[0].length;
+  let depth = 0;
+  let paragraphStart = -1;
+  let match: RegExpExecArray | null;
+
+  while ((match = paragraphTagPattern.exec(documentXml))) {
+    if (!match[0].startsWith('</')) {
+      if (depth === 0) paragraphStart = match.index;
+      depth += 1;
+      continue;
+    }
+
+    depth -= 1;
+    if (depth !== 0 || paragraphStart < 0) continue;
+
+    const paragraphEnd = paragraphTagPattern.lastIndex;
+    const paragraphXml = documentXml.slice(paragraphStart, paragraphEnd);
+    const isEmpty = getParagraphText(paragraphXml).trim() === '';
+    const hasVisibleObject = /<w:(?:drawing|pict|object)\b/.test(paragraphXml);
+    if (!isEmpty || hasVisibleObject) return documentXml;
+
+    return documentXml.slice(0, paragraphStart) + documentXml.slice(paragraphEnd);
+  }
+
+  return documentXml;
 }

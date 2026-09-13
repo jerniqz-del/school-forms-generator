@@ -89,7 +89,7 @@ import {
   SPED_COVER_TEMPLATE_NAME,
 } from '@/lib/sped-class';
 import { getPreferredTemplateNames, isSelectableA5Template, isShsTemplateFileName } from '@/lib/paper-size-templates';
-import { repair55x85DocumentXml } from '@/lib/sf9-55x85';
+import { remove55x85LeadingSpacer, repair55x85DocumentXml } from '@/lib/sf9-55x85';
 import {
   getSpecialSubjectValue,
   getTemplateGradeKey,
@@ -513,6 +513,12 @@ async function buildSf9DocxBlob({
     doc.setData(finalData);
     doc.render();
 
+    if (is55x85Template) {
+        const renderedDocumentXml = doc.getZip().file('word/document.xml')?.asText();
+        if (renderedDocumentXml) {
+            doc.getZip().file('word/document.xml', remove55x85LeadingSpacer(renderedDocumentXml));
+        }
+    }
     return {
         blob: doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
         selectedCount: selectedStudents.length,
