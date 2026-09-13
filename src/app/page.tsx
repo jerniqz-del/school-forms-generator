@@ -408,7 +408,10 @@ async function buildSf9DocxBlob({
         if (documentXml && /\{#(?:<[^>]+>)*students\}/.test(documentXml)) {
             const repairedXml = documentXml
                 .replace(/\{#(?:<[^>]+>)*students\}/, '')
-                .replace(/\{%((?:<[^>]+>)*logo)\}/, '{#students}{%$1}');
+                .replace(
+                    /(<w:body[^>]*>\s*<w:p[^>]*>)/,
+                    '$1<w:r><w:t>{#students}</w:t></w:r>'
+                );
             zip.file('word/document.xml', repairedXml);
         }    } else if (isKinderCoverTemplate) {
         const documentXmlFile = zip.file('word/document.xml');
