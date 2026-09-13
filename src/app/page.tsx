@@ -1642,7 +1642,7 @@ const handleGenerateSF9 = useCallback(async (
   }, [authUser?.uid, handleGenerateSF9, loadPaidGenerationTokens, loadStateFromLocalStorage, toast]);
 
 
-  const fetchTemplates = useCallback(async () => {
+  const fetchTemplates = useCallback(async (): Promise<TemplateFile[]> => {
       const repoConfig = paperSizeRepos[paperSize];
       
       setSelectedTemplateUrls({});
@@ -1654,7 +1654,7 @@ const handleGenerateSF9 = useCallback(async (
           title: "Under Development",
           description: `Template repository for ${paperSize} paper size is not yet available.`,
         });
-        return;
+        return [];
       }
       
       setIsTemplatesLoading(true);
@@ -1677,7 +1677,7 @@ const handleGenerateSF9 = useCallback(async (
               return a.name.localeCompare(b.name);
             });
           setTemplates(a5Files);
-          return;
+          return a5Files;
         }
 
         const extraSpecialTemplates = docxFiles.filter(file =>
@@ -1697,6 +1697,7 @@ const handleGenerateSF9 = useCallback(async (
         });
         
         setTemplates(availableMasterFiles);
+        return availableMasterFiles;
       } catch (error: any) {
         console.error("Error fetching templates:", error);
         toast({
@@ -1705,6 +1706,7 @@ const handleGenerateSF9 = useCallback(async (
             description: error.message || "Please check your connection and try again.",
             action: <Button variant="outline" size="sm" onClick={fetchTemplates}>Retry</Button>,
         });
+        return [];
       } finally {
         setIsTemplatesLoading(false);
       }
@@ -2164,7 +2166,40 @@ const formatPolishedName = (name: string): string => {
       return;
     }
     
-    if (isSF9ActionDisabled) {
+    setLoadingMessage('Refreshing templates, please wait...');
+    const latestTemplates = await fetchTemplates();
+    const refreshedTemplateUrls: { [gradeLevel: string]: string } = {};
+
+    for (const gradeLevel of uniqueGradeLevels) {
+      const fileForGrade = filesData.find(file => getTemplateGradeKey(file.fileInfo) === gradeLevel);
+      const namesToTry = getPreferredTemplateNames(
+        gradeLevel,
+        paperSize,
+        gradeToTemplateMap,
+        gradeTemplateFallbacks
+      );
+      const selectedUrl = selectedTemplateUrls[gradeLevel];
+      const latestTemplate = latestTemplates.find(template =>
+        namesToTry.some(name => name.toLowerCase() === template.name.toLowerCase())
+      ) || latestTemplates.find(template => template.download_url === selectedUrl);
+
+      if (latestTemplate && fileForGrade) {
+        refreshedTemplateUrls[gradeLevel] = latestTemplate.download_url;
+      }
+    }
+
+    if (uniqueGradeLevels.some(gradeLevel => !refreshedTemplateUrls[gradeLevel])) {
+      toast({
+        variant: 'destructive',
+        title: 'Templates Unavailable',
+        description: 'The latest template repository does not contain a template for every selected grade level.',
+      });
+      setIsPurchaseConfirmationOpen(false);
+      return;
+    }
+
+    setSelectedTemplateUrls(refreshedTemplateUrls);
+    if (isActionDisabled || hasIncompleteSpecialClass) {
       toast({
         variant: 'destructive',
         title: 'Missing Information',
@@ -2204,7 +2239,7 @@ const formatPolishedName = (name: string): string => {
       filesData: generationFilesData,
       sharedInfo,
       croppedLogo,
-      selectedTemplateUrls,
+      selectedTemplateUrls: refreshedTemplateUrls,
       paperSize,
       useMiddleInitial,
       documentType,
