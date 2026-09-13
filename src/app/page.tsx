@@ -424,11 +424,11 @@ async function buildSf9DocxBlob({
             }
             return null;
         },
-        // Docxtemplater image sizes use pixels at 96 DPI. A 9x9 inch logo is 864x864 px.
+        // Docxtemplater image sizes use pixels at 96 DPI. A 0.9x0.9 inch logo is 86.4x86.4 px at 96 DPI.
         getSize: () => {
             if (isKinderCoverTemplate) return [86, 86];
             if (spedCoverTemplate) return [71, 71];
-            if (paperSize === '5.5x8.5') return [864, 864];
+            if (paperSize === '5.5x8.5') return [86.4, 86.4];
             return [54, 54];
         },
     });
