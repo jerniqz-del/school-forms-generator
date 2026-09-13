@@ -2726,7 +2726,7 @@ const formatPolishedName = (name: string): string => {
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    setCrop(centerAspectCrop(width, height, 1));
+    setCrop({ unit: '%', x: 0, y: 0, width: 100, height: 100 });
   }
   
   const handleSaveCrop = () => {
@@ -2746,8 +2746,11 @@ const formatPolishedName = (name: string): string => {
     }
 
     const pixelRatio = window.devicePixelRatio;
-    canvas.width = Math.round(completedCrop.width * pixelRatio);
-    canvas.height = Math.round(completedCrop.height * pixelRatio);
+    const sourceWidth = completedCrop.width * scaleX;
+    const sourceHeight = completedCrop.height * scaleY;
+    const outputSize = Math.max(sourceWidth, sourceHeight);
+    canvas.width = Math.round(outputSize * pixelRatio);
+    canvas.height = Math.round(outputSize * pixelRatio);
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     ctx.imageSmoothingQuality = 'high';
 
@@ -2757,10 +2760,10 @@ const formatPolishedName = (name: string): string => {
       completedCrop.y * scaleY,
       completedCrop.width * scaleX,
       completedCrop.height * scaleY,
-      0,
-      0,
-      Math.round(completedCrop.width * pixelRatio),
-      Math.round(completedCrop.height * pixelRatio)
+      (outputSize - sourceWidth) / 2,
+      (outputSize - sourceHeight) / 2,
+      sourceWidth,
+      sourceHeight
     );
     
     const newLogo = canvas.toDataURL('image/png');
@@ -3008,7 +3011,7 @@ const formatPolishedName = (name: string): string => {
         <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Crop School Logo</DialogTitle>
+              <DialogTitle>Adjust School Logo</DialogTitle>
             </DialogHeader>
             {logoSrc && (
               <div className='flex justify-center'>
@@ -3016,7 +3019,6 @@ const formatPolishedName = (name: string): string => {
                 crop={crop}
                 onChange={(_, percentCrop) => setCrop(percentCrop)}
                 onComplete={(c) => setCompletedCrop(c)}
-                aspect={1}
                 minWidth={100}
                 minHeight={100}
               >
