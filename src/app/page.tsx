@@ -138,6 +138,7 @@ type FileInfo = {
     section: string;
     adviser: string;
     school: string;
+    schoolId?: string;
     district: string;
     division?: string;
     region?: string;
@@ -150,6 +151,7 @@ type FileInfo = {
 
 type SharedInfo = {
     school: string;
+    schoolId: string;
     schoolHead: string;
     schoolHeadDesignation: string;
     district: string;
@@ -183,6 +185,7 @@ type RepoConfig = {
 
 const initialSharedInfo: SharedInfo = {
     school: '',
+    schoolId: '',
     schoolHead: '',
     schoolHeadDesignation: '',
     district: '',
@@ -223,6 +226,7 @@ type AppState = {
   sharedInfo: SharedInfo;
   croppedLogo: string | null;
   selectedTemplateUrls: { [gradeLevel: string]: string };
+  paperSize: string;
   useMiddleInitial: boolean;
   documentType: PricedDocumentType;
 };
@@ -362,6 +366,7 @@ async function buildSf9DocxBlob({
     fileData,
     sharedInfo,
     croppedLogo,
+    paperSize,
     useMiddleInitial,
     previewOnly = false,
 }: {
@@ -369,6 +374,7 @@ async function buildSf9DocxBlob({
     fileData: FileData;
     sharedInfo: SharedInfo;
     croppedLogo: string | null;
+    paperSize: string;
     useMiddleInitial: boolean;
     previewOnly?: boolean;
 }) {
@@ -418,9 +424,11 @@ async function buildSf9DocxBlob({
             }
             return null;
         },
+        // Docxtemplater image sizes use pixels at 96 DPI. A 9x9 inch logo is 864x864 px.
         getSize: () => {
             if (isKinderCoverTemplate) return [86, 86];
             if (spedCoverTemplate) return [71, 71];
+            if (paperSize === '5.5x8.5') return [864, 864];
             return [54, 54];
         },
     });
@@ -686,6 +694,7 @@ const paperSizeRepos: { [key: string]: RepoConfig | null } = {
     'A4': null,
     'A5': CUSTOM_SIZE_TEMPLATE_REPO,
     'Custom': CUSTOM_SIZE_TEMPLATE_REPO,
+    '5.5x8.5': CUSTOM_SIZE_TEMPLATE_REPO,
 };
 
 const MAX_PREVIOUS_LOGOS = 5;
@@ -1031,6 +1040,7 @@ export default function Home() {
         // Pre-fill shared info from the most recent history
         setSharedInfo({
             school: parsed.school?.[0] || '',
+            schoolId: '',
             schoolHead: parsed.schoolHead?.[0] || '',
             schoolHeadDesignation: parsed.schoolHeadDesignation?.[0] || '',
             region: parsed.region?.[0] || 'Region V',
@@ -1107,6 +1117,7 @@ export default function Home() {
       sharedInfo,
       croppedLogo,
       selectedTemplateUrls,
+      paperSize,
       useMiddleInitial,
       documentType,
     };
@@ -1115,7 +1126,7 @@ export default function Home() {
     } catch(e) {
       console.error("Could not save state to localStorage", e);
     }
-  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, useMiddleInitial, documentType]);
+  }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, paperSize, useMiddleInitial, documentType]);
 
   const loadStateFromLocalStorage = useCallback((): AppState | null => {
     try {
@@ -1126,6 +1137,7 @@ export default function Home() {
         return {
           ...parsedState,
           documentType: IS_PDF_OUTPUT_ENABLED && parsedState.documentType === 'pdf' ? 'pdf' : 'docx',
+          paperSize: parsedState.paperSize || 'Custom',
           filesData: parsedState.filesData.map((f: any) => ({...f, selectedRows: new Set(f.selectedRows) })),
         };
       }
@@ -1255,6 +1267,7 @@ const handleGenerateSF9 = useCallback(async (
         selectedTemplateUrls: currentTemplateUrls,
         useMiddleInitial: useMI,
         documentType: currentDocumentType,
+        paperSize: currentPaperSize = 'Custom',
     } = generationState;
 
     const totalSelected = currentFilesData.reduce((acc, file) => acc + file.selectedRows.size, 0);
@@ -1323,6 +1336,7 @@ const handleGenerateSF9 = useCallback(async (
                 fileData,
                 sharedInfo: currentSharedInfo,
                 croppedLogo: currentCroppedLogo,
+                paperSize: currentPaperSize,
                 useMiddleInitial: useMI,
             });
             const docxName = `SF9_${fileData.fileInfo.gradeLevel}_${fileData.fileInfo.section}_(${selectedCount}_students).docx`;
@@ -1873,6 +1887,7 @@ const formatPolishedName = (name: string): string => {
                 division: firstFile.fileInfo.division || prev.division,
                 region: firstFile.fileInfo.region || prev.region,
                 school: firstFile.fileInfo.school || prev.school,
+                schoolId: firstFile.fileInfo.schoolId || prev.schoolId,
                 address: firstFile.fileInfo.address || prev.address,
                 schoolYear: firstFile.fileInfo.schoolYear || prev.schoolYear,
                 schoolYearStartDate:
@@ -2093,6 +2108,9 @@ const formatPolishedName = (name: string): string => {
                     }
                 }
 
+                // School ID is stored in SF1 cell F3 (zero-based row 2, column 5).
+                const parsedSchoolId = String(getCellValue(2, 5)).trim();
+
                 // School Name from cell (3, 5) or (2, 5) and expand abbreviations
                 const rawSchoolName = String(getCellValue(3, 5) || getCellValue(2, 5) || '').trim();
                 const parsedSchool = expandSchoolName(rawSchoolName);
@@ -2106,6 +2124,7 @@ const formatPolishedName = (name: string): string => {
                         section: toProperCase(rawSection),
                         adviser: adviser,
                         school: parsedSchool,
+                        schoolId: parsedSchoolId,
                         district: parsedDistrict,
                         municipality: parsedMunicipality,
                         division: parsedDivision,
@@ -2185,6 +2204,7 @@ const formatPolishedName = (name: string): string => {
       sharedInfo,
       croppedLogo,
       selectedTemplateUrls,
+      paperSize,
       useMiddleInitial,
       documentType,
     };
@@ -2793,6 +2813,7 @@ const formatPolishedName = (name: string): string => {
   
   const isActionDisabled = isProcessing || totalSelectedStudents === 0 || 
     !sharedInfo.school ||
+    !sharedInfo.schoolId ||
     !sharedInfo.schoolHead || 
     !sharedInfo.schoolHeadDesignation ||
     !sharedInfo.region ||
@@ -3045,6 +3066,7 @@ const formatPolishedName = (name: string): string => {
                         sharedInfo,
                         croppedLogo,
                         selectedTemplateUrls,
+                        paperSize,
                         useMiddleInitial,
                         documentType,
                       }, { showPaymentRecovery: true })}
@@ -3096,6 +3118,7 @@ const formatPolishedName = (name: string): string => {
                 <SummaryItem label="Bronze tokens" value={`${walletBalances.freeTokens} (used first, not shareable)`} />
                 <SummaryItem label="Gold tokens" value={`${walletBalances.shareableTokens} (from reloads, shareable)`} />
                 <SummaryItem label="School Name" value={sharedInfo.school} />
+                <SummaryItem label="School ID" value={sharedInfo.schoolId} />
                 <SummaryItem label="School Head" value={sharedInfo.schoolHead} />
                 <SummaryItem label="School Head Designation" value={sharedInfo.schoolHeadDesignation} />
                 <SummaryItem label="Region" value={sharedInfo.region} />
@@ -4113,6 +4136,14 @@ const formatPolishedName = (name: string): string => {
 
                               <div className="space-y-1.5">
                                 <div className="flex items-center gap-1.5">
+                                  <Label htmlFor="schoolId">School ID</Label>
+                                </div>
+                                <Input id="schoolId" value={sharedInfo.schoolId} placeholder="e.g. 123456" onChange={(e) => handleSharedInfoChange("schoolId", e.target.value.trim())} className={cn(!sharedInfo.schoolId && "border-destructive")} />
+                                <p className="text-[11px] text-muted-foreground font-medium">Auto-populated from SF1 cell F3.</p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5">
                                   <Label htmlFor="schoolHead">School Head</Label>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -4392,6 +4423,10 @@ const formatPolishedName = (name: string): string => {
                                   <div className="flex items-center space-x-2">
                                     <RadioGroupItem value="Custom" id="Custom" />
                                     <Label htmlFor="Custom">Custom (4x8.5)</Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="5.5x8.5" id="5.5x8.5" />
+                                    <Label htmlFor="5.5x8.5">Custom (5.5x8.5)</Label>
                                   </div>
                                 </RadioGroup>
                                 <p className="text-xs text-muted-foreground px-1">Please use 180 GSM and above paper only.</p>
