@@ -233,6 +233,69 @@ type AppState = {
   documentType: PricedDocumentType;
 };
 
+type SerializedAppState = Omit<AppState, 'filesData'> & {
+  filesData: Array<Omit<FileData, 'selectedRows'> & { selectedRows: string[] }>;
+};
+
+type GenerationHistoryEntry = {
+  id: string;
+  dateKey: string;
+  savedAt: string;
+  label: string;
+  fileCount: number;
+  studentCount: number;
+  state: SerializedAppState;
+};
+
+const GENERATION_HISTORY_STORAGE_KEY = 'sf9GenerationHistory';
+const MAX_GENERATION_HISTORY = 5;
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function serializeGenerationState(state: AppState): SerializedAppState {
+  return {
+    ...state,
+    filesData: state.filesData.map(file => ({
+      ...file,
+      selectedRows: Array.from(file.selectedRows),
+    })),
+  };
+}
+
+function hydrateGenerationState(state: SerializedAppState): AppState {
+  return {
+    ...state,
+    documentType: IS_PDF_OUTPUT_ENABLED && state.documentType === 'pdf' ? 'pdf' : 'docx',
+    filesData: state.filesData.map(file => ({
+      ...file,
+      selectedRows: new Set(file.selectedRows),
+    })),
+  };
+}
+
+function loadGenerationHistory(): GenerationHistoryEntry[] {
+  try {
+    const saved = localStorage.getItem(GENERATION_HISTORY_STORAGE_KEY);
+    if (!saved) return [];
+
+    const today = getLocalDateKey();
+    const entries = JSON.parse(saved) as GenerationHistoryEntry[];
+    const currentEntries = Array.isArray(entries)
+      ? entries.filter(entry => entry?.dateKey === today && entry?.state?.filesData)
+      : [];
+    localStorage.setItem(GENERATION_HISTORY_STORAGE_KEY, JSON.stringify(currentEntries));
+    return currentEntries;
+  } catch (error) {
+    console.error('Could not load generation history:', error);
+    return [];
+  }
+}
+
 type PaidGenerationTokenLedger = {
   checkoutSessionId: string;
   userId: string | null;
@@ -528,12 +591,49 @@ async function buildSf9DocxBlob({
 }
 
 
-const LoadingOverlay = ({ message }: { message: string }) => (
-    <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-50 backdrop-blur-sm">
-        <Loader2 className="size-12 animate-spin text-primary" />
-        <p className="mt-4 text-lg text-muted-foreground">{message}</p>
-    </div>
-);
+const LoadingOverlay = ({ message }: { message: string }) => {
+    const overlayRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        overlayRef.current?.focus();
+    }, []);
+
+    return (
+        <div
+            ref={overlayRef}
+            tabIndex={-1}
+            role="status"
+            aria-live="polite"
+            aria-label="Document generation in progress"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md outline-none"
+        >
+            <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/15 bg-background/95 p-8 text-center shadow-2xl shadow-slate-950/30">
+                <div className="pointer-events-none absolute -right-20 -top-20 size-48 rounded-full bg-primary/15 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-24 -left-16 size-48 rounded-full bg-blue-500/10 blur-3xl" />
+
+                <div className="relative mx-auto flex size-24 items-center justify-center">
+                    <div className="absolute inset-0 rounded-full border-4 border-primary/15" />
+                    <div className="absolute inset-1 rounded-full border-4 border-transparent border-t-primary border-r-primary/60 animate-spin" />
+                    <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+                        <FileText className="size-7" />
+                    </div>
+                </div>
+
+                <h2 className="relative mt-6 text-xl font-bold tracking-tight">Preparing your School Form 9</h2>
+                <p className="relative mt-2 min-h-6 text-sm leading-6 text-muted-foreground">{message}</p>
+
+                <div className="relative mt-6 overflow-hidden rounded-full bg-muted">
+                    <div className="h-2 w-2/5 rounded-full bg-gradient-to-r from-primary/60 via-primary to-blue-400 animate-pulse" />
+                </div>
+
+                <div className="relative mt-4 flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground">
+                    <span className="size-2 animate-pulse rounded-full bg-primary" />
+                    <span>Please keep this window open while we finish.</span>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 function centerAspectCrop(
   mediaWidth: number,
@@ -872,6 +972,8 @@ export default function Home() {
   const [templates, setTemplates] = useState<TemplateFile[]>([]);
   const [isTemplatesLoading, setIsTemplatesLoading] = useState(false);
   const [selectedTemplateUrls, setSelectedTemplateUrls] = useState<{ [gradeLevel: string]: string }>({});
+  const [generationHistory, setGenerationHistory] = useState<GenerationHistoryEntry[]>([]);
+  const restoredTemplateUrlsRef = useRef<{ [gradeLevel: string]: string } | null>(null);
 
   const [paperSize, setPaperSize] = useState('Custom');
   const [documentType, setDocumentType] = useState<PricedDocumentType>('docx');
@@ -908,6 +1010,7 @@ export default function Home() {
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     setHasMounted(true);
+    setGenerationHistory(loadGenerationHistory());
   }, []);
 
 
@@ -1144,6 +1247,59 @@ export default function Home() {
     }
   }, [filesData, sharedInfo, croppedLogo, selectedTemplateUrls, paperSize, useMiddleInitial, documentType]);
 
+  const saveGenerationHistory = useCallback((state: AppState) => {
+    try {
+      const savedAt = new Date().toISOString();
+      const dateKey = getLocalDateKey();
+      const studentCount = state.filesData.reduce((total, file) => total + file.selectedRows.size, 0);
+      const schoolName = state.sharedInfo.school.trim() || 'School data';
+      const schoolYear = state.sharedInfo.schoolYear.trim();
+      const entry: GenerationHistoryEntry = {
+        id: `${dateKey}-${Date.now()}`,
+        dateKey,
+        savedAt,
+        label: schoolYear ? `${schoolName} • ${schoolYear}` : schoolName,
+        fileCount: state.filesData.length,
+        studentCount,
+        state: serializeGenerationState(state),
+      };
+      const entries = [entry, ...loadGenerationHistory()].slice(0, MAX_GENERATION_HISTORY);
+      localStorage.setItem(GENERATION_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+      setGenerationHistory(entries);
+    } catch (error) {
+      console.error('Could not save generation history:', error);
+    }
+  }, []);
+
+  const handleRestoreGeneration = useCallback((entry: GenerationHistoryEntry) => {
+    try {
+      const restoredState = hydrateGenerationState(entry.state);
+      restoredTemplateUrlsRef.current = restoredState.selectedTemplateUrls;
+      setPendingFiles([]);
+      setFilesData(restoredState.filesData);
+      setSharedInfo(restoredState.sharedInfo);
+      setCroppedLogo(restoredState.croppedLogo);
+      setSelectedTemplateUrls(restoredState.selectedTemplateUrls);
+      setPaperSize(restoredState.paperSize || 'Custom');
+      setUseMiddleInitial(restoredState.useMiddleInitial);
+      setDocumentType(restoredState.documentType);
+      setOpenAccordions(restoredState.filesData.map(file => file.id));
+      setStep(2);
+      setActiveWorkspaceSection('generator');
+      toast({
+        variant: 'success',
+        title: 'Generation Restored',
+        description: 'Your school data and selections from today are ready to review.',
+      });
+    } catch (error) {
+      console.error('Could not restore generation history:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Could Not Restore Generation',
+        description: 'This saved generation is no longer available.',
+      });
+    }
+  }, [toast]);
   const loadStateFromLocalStorage = useCallback((): AppState | null => {
     try {
       const savedState = localStorage.getItem('appState');
@@ -1419,6 +1575,7 @@ const handleGenerateSF9 = useCallback(async (
         }
 
         saveAs(exportBlob, exportName);
+        saveGenerationHistory(generationState);
 
         if (options?.showPaymentRecovery) {
             const checkoutSessionId = localStorage.getItem('checkoutSessionId');
@@ -1467,7 +1624,7 @@ const handleGenerateSF9 = useCallback(async (
     } finally {
         setIsProcessing(false);
     }
-}, [authUser?.uid, savePaidGenerationTokens, toast]);
+}, [authUser?.uid, saveGenerationHistory, savePaidGenerationTokens, toast]);
 
 
   useEffect(() => {
@@ -1661,7 +1818,7 @@ const handleGenerateSF9 = useCallback(async (
   const fetchTemplates = useCallback(async (): Promise<TemplateFile[]> => {
       const repoConfig = paperSizeRepos[paperSize];
       
-      setSelectedTemplateUrls({});
+      if (!restoredTemplateUrlsRef.current) setSelectedTemplateUrls({});
       setTemplates([]);
 
       if (!repoConfig) {
@@ -1738,6 +1895,22 @@ const handleGenerateSF9 = useCallback(async (
     useEffect(() => {
         fetchTemplates();
     }, [fetchTemplates]);
+
+    useEffect(() => {
+        const pendingUrls = restoredTemplateUrlsRef.current;
+        if (isTemplatesLoading || !pendingUrls || templates.length === 0) return;
+
+        const restoredUrls: { [gradeLevel: string]: string } = {};
+        Object.entries(pendingUrls).forEach(([gradeLevel, url]) => {
+            if (templates.some(template => template.download_url === url)) {
+                restoredUrls[gradeLevel] = url;
+            }
+        });
+        if (Object.keys(restoredUrls).length > 0) {
+            setSelectedTemplateUrls(restoredUrls);
+        }
+        restoredTemplateUrlsRef.current = null;
+    }, [isTemplatesLoading, templates]);
 
   const autoSelectTemplates = useCallback((processedFiles: FileData[]) => {
       if (templates.length === 0) return;
@@ -1996,6 +2169,26 @@ const formatPolishedName = (name: string): string => {
                 const gradeFromFileName = file.name.match(/\bGrade\s+(1[0-2]|[1-9])\b/i)?.[1] || '';
                 const rawGrade = getValueAfterLabel(json[3], 'Grade Level') || gradeFromFileName;
                 const rawSection = getValueAfterLabel(json[3], 'Section');
+                const findHeaderColumn = (pattern: RegExp) => {
+                    for (const rowIndex of [4, 5]) {
+                        const row = json[rowIndex] || [];
+                        const column = row.findIndex(cell => pattern.test(String(cell || '').trim()));
+                        if (column !== -1) return column;
+                    }
+                    return -1;
+                };
+                const columns = {
+                    lrn: findHeaderColumn(/^LRN$/i),
+                    name: findHeaderColumn(/^NAME\b/i),
+                    sex: findHeaderColumn(/^Sex\s*\(M\/F\)/i),
+                    birthdate: findHeaderColumn(/^BIRTH DATE\b/i),
+                    age: findHeaderColumn(/^AGE\b/i),
+                    barangay: findHeaderColumn(/^Barangay$/i),
+                    municipality: findHeaderColumn(/^Municipality\s*\/\s*City$/i),
+                    province: findHeaderColumn(/^Province$/i),
+                    fatherName: findHeaderColumn(/^Father's Name\b/i),
+                    motherName: findHeaderColumn(/^Mother's Maiden Name\b/i),
+                };
                 const gradeLevel = normalizeSf1GradeLevel(rawGrade, {
                     section: rawSection,
                     fileName: file.name,
@@ -2014,8 +2207,9 @@ const formatPolishedName = (name: string): string => {
                 }
 
                 let startIndex = -1;
-                for(let i=0; i<json.length; i++) {
-                    if(json[i][0] && typeof(json[i][0]) === 'string' && json[i][0].toLowerCase().includes('lrn')){
+                for (let i = 0; i < json.length; i++) {
+                    const lrnCell = columns.lrn >= 0 ? json[i]?.[columns.lrn] : '';
+                    if (lrnCell && typeof lrnCell === 'string' && lrnCell.toLowerCase().includes('lrn')) {
                         startIndex = i + 1;
                         break;
                     }
@@ -2033,30 +2227,33 @@ const formatPolishedName = (name: string): string => {
                 const extractedData: StudentRecord[] = [];
                 for (let i = startIndex; i < endIndex; i++) {
                   const row = json[i];
-                  if (!row[0] || !row[2]) continue;
+                  const lrn = columns.lrn >= 0 ? row[columns.lrn] : '';
+                  const name = columns.name >= 0 ? row[columns.name] : '';
+                  if (!lrn || !name) continue;
                   
-                  if (
-                    (typeof row[1] === 'string' && row[1].toLowerCase().includes('<=== total male')) ||
-                    (typeof row[2] === 'string' && row[2].toLowerCase().includes('<=== total male'))
-                  ) {
+                  if (row.some(cell =>
+                    typeof cell === 'string' && cell.toLowerCase().includes('<=== total male')
+                  )) {
                     continue;
                   }
 
-                  const rawName = String(row[2] || '');
-                  const ageValue = Math.floor(Number(row[9] || 0));
-                  const barangay = String(row[17] || '').replace(/\sBearer \(\sBearer Pob\.\sBearer \)/i, '').toUpperCase();
+                  const rawName = String(name || '');
+                  const ageValue = Math.floor(Number(columns.age >= 0 ? row[columns.age] || 0 : 0));
+                  const barangay = String(columns.barangay >= 0 ? row[columns.barangay] || '' : '')
+                    .replace(/\s\(Pob\.\)/i, '')
+                    .toUpperCase();
 
                   extractedData.push({
-                    LRN: String(row[0]).split('.')[0],
+                    LRN: String(lrn).split('.')[0],
                     Name: formatPolishedName(rawName),
-                    Sex: String(row[6] || '').toUpperCase() === 'M' ? 'Male' : 'Female',
-                    Birthdate: row[7] || '',
+                    Sex: String(columns.sex >= 0 ? row[columns.sex] || '' : '').toUpperCase() === 'M' ? 'Male' : 'Female',
+                    Birthdate: columns.birthdate >= 0 ? row[columns.birthdate] || '' : '',
                     Age: isNaN(ageValue) ? 0 : ageValue,
                     Barangay: barangay,
-                    Municipality: String(row[20] || '').toUpperCase(),
-                    Province: String(row[22] || '').toUpperCase(),
-                    FatherName: formatPolishedName(String(row[27] || '')),
-                    MotherName: formatPolishedName(String(row[31] || '')),
+                    Municipality: String(columns.municipality >= 0 ? row[columns.municipality] || '' : '').toUpperCase(),
+                    Province: String(columns.province >= 0 ? row[columns.province] || '' : '').toUpperCase(),
+                    FatherName: formatPolishedName(String(columns.fatherName >= 0 ? row[columns.fatherName] || '' : '')),
+                    MotherName: formatPolishedName(String(columns.motherName >= 0 ? row[columns.motherName] || '' : '')),
                   });
                 }
                 
@@ -3812,6 +4009,37 @@ const formatPolishedName = (name: string): string => {
                             Add class without SF1
                         </Button>
 
+                        {generationHistory.length > 0 && (
+                            <div className="mt-8 rounded-2xl border bg-muted/30 p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="flex items-center gap-2 font-semibold">
+                                            <History className="size-4 text-primary" />
+                                            Today&apos;s generation history
+                                        </h3>
+                                        <p className="text-xs text-muted-foreground">Saved only in this browser and reset tomorrow.</p>
+                                    </div>
+                                    <Badge variant="secondary">{generationHistory.length}</Badge>
+                                </div>
+                                <div className="space-y-2">
+                                    {generationHistory.map(entry => (
+                                        <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border bg-background p-3">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-semibold">{entry.label}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {entry.fileCount} class{entry.fileCount === 1 ? '' : 'es'} • {entry.studentCount} learner{entry.studentCount === 1 ? '' : 's'} • {new Date(entry.savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => handleRestoreGeneration(entry)} disabled={isProcessing}>
+                                                <RotateCw className="mr-2 size-4" />
+                                                Restore
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {pendingFiles.length > 0 && (
                             <div className="mt-6">
                                 <h3 className="font-semibold text-lg mb-2">Selected Files ({pendingFiles.length})</h3>
@@ -3987,7 +4215,7 @@ const formatPolishedName = (name: string): string => {
                                     )}
                                     <div className="relative rounded-lg border max-h-[50vh] overflow-auto">
                                       <ShadTable>
-                                        <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+                                        <TableHeader className="relative z-10 bg-background/95">
                                           <TableRow>
                                             <TableHead className="sticky left-0 z-20 w-[50px] bg-background/95 text-center">
                                               <Checkbox
