@@ -33,7 +33,35 @@ export async function GET(request: NextRequest) {
     }
     
     const data = await response.json();
-    return NextResponse.json(data);
+    const files = await Promise.all(
+      data.map(async (file: { type?: string; path?: string }) => {
+        if (file.type !== 'file' || !file.path) return file;
+
+        try {
+          const commitsResponse = await fetch(
+            GITHUB_API_URL + '/repos/' + REPO_OWNER + '/' + repo + '/commits?path=' + encodeURIComponent(file.path) + '&per_page=1',
+            {
+              cache: 'no-store',
+              headers: { Accept: 'application/vnd.github.v3+json' },
+            }
+          );
+          if (!commitsResponse.ok) return { ...file, last_updated_at: null };
+
+          const commits = await commitsResponse.json();
+          return {
+            ...file,
+            last_updated_at:
+              commits[0]?.commit?.committer?.date ??
+              commits[0]?.commit?.author?.date ??
+              null,
+          };
+        } catch {
+          return { ...file, last_updated_at: null };
+        }
+      })
+    );
+
+    return NextResponse.json(files);
 
   } catch (error: any) {
     console.error(`Error fetching from GitHub API for repo ${repo}:`, error);

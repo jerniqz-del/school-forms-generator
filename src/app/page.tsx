@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import ImageModule from 'docxtemplater-image-module-free';
 import { saveAs } from 'file-saver';
 
-import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, UserPlus, Users } from 'lucide-react';
+import { FileUp, Table, Download, FileCheck, Loader2, Settings, Upload, TestTube2, FileText, Trash2, X, MessageSquareQuote, History, RotateCw, ChevronRight, CheckCircle2, Search, File as FileIcon, Files, Package as PackageIcon, AlertCircle, HelpCircle, AlertTriangle, Percent, LogIn, Coins, Gift, Share2, LayoutDashboard, ShoppingBag, UserPlus, Users, CalendarDays } from 'lucide-react';
 import { MarketplaceSection } from '@/components/marketplace/marketplace-section';
 import { MarketplaceCartButton, MarketplaceCartProvider } from '@/components/marketplace/marketplace-cart';
 
@@ -176,6 +176,7 @@ type FileData = {
 type TemplateFile = {
   name: string;
   download_url: string;
+  last_updated_at?: string | null;
 };
 
 type RepoConfig = {
@@ -4541,11 +4542,24 @@ const formatPolishedName = (name: string): string => {
                                                             )}
                                                         </SelectContent>
                                                     </Select>
-                                                    
                                                     {selectedTemplate && (
-                                                        <div className="flex items-center space-x-1.5 text-xs text-green-600 font-medium">
-                                                            <CheckCircle2 className="size-4" />
-                                                            <span>Template mapped successfully</span>
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center space-x-1.5 text-xs text-green-600 font-medium">
+                                                                <CheckCircle2 className="size-4" />
+                                                                <span>Template mapped successfully</span>
+                                                            </div>
+                                                            {selectedTemplate.last_updated_at && (
+                                                                <div className="flex items-center space-x-1.5 text-xs text-muted-foreground">
+                                                                    <CalendarDays className="size-3.5" />
+                                                                    <span>
+                                                                        Last updated: {new Intl.DateTimeFormat(undefined, {
+                                                                            year: 'numeric',
+                                                                            month: 'short',
+                                                                            day: 'numeric',
+                                                                        }).format(new Date(selectedTemplate.last_updated_at))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
