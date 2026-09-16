@@ -1682,7 +1682,14 @@ const handleGenerateSF9 = useCallback(async (
         }
         
         const files: TemplateFile[] = await response.json();
-        const docxFiles = files.filter(file => file.name.endsWith('.docx'));
+        const docxFiles = files.filter(file => /\.docx$/i.test(file.name));
+        if (paperSize === '5.5x8.5') {
+          const compactFiles = docxFiles
+            .filter(file => /5\.5x8\.5/i.test(file.name))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          setTemplates(compactFiles);
+          return compactFiles;
+        }
         if (paperSize === 'A5') {
           const a5Files = docxFiles
             .filter(file => isSelectableA5Template(file.name))
@@ -1749,7 +1756,12 @@ const handleGenerateSF9 = useCallback(async (
               );
               const matchedTemplate = templates.find(t =>
                 namesToTry.some(name => name.toLowerCase() === t.name.toLowerCase())
-              );
+              ) || (paperSize === '5.5x8.5'
+                ? templates.find(t =>
+                    t.name.toLowerCase().includes(gradeLevel.toLowerCase()) &&
+                    /5\.5x8\.5/i.test(t.name)
+                  )
+                : undefined);
               if (matchedTemplate) {
                   newSelectedUrls[gradeLevel] = matchedTemplate.download_url;
                   updated = true;
@@ -4483,6 +4495,15 @@ const formatPolishedName = (name: string): string => {
                                     <Label htmlFor="5.5x8.5">Custom (5.5x8.5)</Label>
                                   </div>
                                 </RadioGroup>
+                                <p className="text-xs text-muted-foreground px-1">
+                                  {paperSize === 'A4'
+                                    ? 'Two pages in one A4 size paper'
+                                    : paperSize === 'A5'
+                                      ? 'One page in one A5 size paper (half of A4)'
+                                      : paperSize === 'Custom'
+                                        ? 'One page per paper (3 pcs from Long Size Paper)'
+                                        : 'One page per paper (half of Letter Size Paper)'}
+                                </p>
                                 <p className="text-xs text-muted-foreground px-1">Please use 180 GSM and above paper only.</p>
 
                               </div>
