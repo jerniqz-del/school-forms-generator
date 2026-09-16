@@ -1981,8 +1981,21 @@ const formatPolishedName = (name: string): string => {
                   : '';
                 
                 const headerText = json.slice(0, 6).map((row) => (row || []).join(' ')).join(' ');
-                const rawGrade = String(getCellValue(3, 30));
-                const rawSection = String(getCellValue(3, 38));
+                const getValueAfterLabel = (row: any[] | undefined, label: string) => {
+                    if (!row) return '';
+                    const labelIndex = row.findIndex(cell =>
+                        String(cell || '').trim().toLowerCase() === label.toLowerCase()
+                    );
+                    if (labelIndex === -1) return '';
+                    for (let index = labelIndex + 1; index < row.length; index++) {
+                        const value = String(row[index] || '').trim();
+                        if (value) return value;
+                    }
+                    return '';
+                };
+                const gradeFromFileName = file.name.match(/\bGrade\s+(1[0-2]|[1-9])\b/i)?.[1] || '';
+                const rawGrade = getValueAfterLabel(json[3], 'Grade Level') || gradeFromFileName;
+                const rawSection = getValueAfterLabel(json[3], 'Section');
                 const gradeLevel = normalizeSf1GradeLevel(rawGrade, {
                     section: rawSection,
                     fileName: file.name,
