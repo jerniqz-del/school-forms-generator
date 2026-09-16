@@ -2003,10 +2003,13 @@ const formatPolishedName = (name: string): string => {
                 });
 
                 let adviser = '';
-                for (let i = 0; i < json.length; i++) {
-                    if (String(json[i][30]).includes('Prepared by;')) {
-                        adviser = formatName(String(json[i+1]?.[30] || ''));
-                        break;
+                for (let rowIndex = 0; rowIndex < json.length && !adviser; rowIndex++) {
+                    const row = json[rowIndex] || [];
+                    const adviserLabelColumn = row.findIndex(cell =>
+                        String(cell || '').trim().toLowerCase().includes('prepared by;')
+                    );
+                    if (adviserLabelColumn !== -1) {
+                        adviser = formatName(String(json[rowIndex + 1]?.[adviserLabelColumn] || ''));
                     }
                 }
 
